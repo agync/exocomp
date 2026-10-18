@@ -770,6 +770,78 @@ func TestMigration0041UpgradesFrom040(t *testing.T) {
 	}
 }
 
+// TestMigration0043UpgradesFrom042 pins a database at user_version 42 (no
+// source.extra_egress_ports), seeds a source row, then opens it with the current
+// binary: the column arrives in place with the pre-existing row surviving and a
+// declared set round-tripping. A database already at 42 must upgrade without
+// losing rows. 0043 is the per-source default egress set (Decision 0023).
+func TestMigration0043UpgradesFrom042(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 42)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var colCount int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('source') WHERE name = 'extra_egress_ports'`).
+		Scan(&colCount); err != nil {
+		t.Fatalf("probe pre-migration schema: %v", err)
+	}
+	if colCount != 0 {
+		t.Fatal("source.extra_egress_ports exists at user_version 42; the pin is not honest")
+	}
+	if _, err := raw.ExecContext(ctx, `
+		INSERT INTO source (name, kind, created_at) VALUES ('infra', 'git', 1)`); err != nil {
+		t.Fatalf("seed source row: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0042 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 43 {
+		t.Fatalf("schema version = %d after open, want >= 43 (0043 applied)", version)
+	}
+
+	// The migration's column is present and the seeded row survived.
+	var cols int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('source') WHERE name = 'extra_egress_ports'`).
+		Scan(&cols); err != nil {
+		t.Fatalf("probe migrated schema: %v", err)
+	}
+	if cols != 1 {
+		t.Fatalf("source.extra_egress_ports columns = %d after 0043, want 1", cols)
+	}
+	src, err := s.SourceByName(ctx, "infra")
+	if err != nil {
+		t.Fatalf("read seeded source: %v", err)
+	}
+	if len(src.ExtraEgressPorts) != 0 {
+		t.Fatalf("seeded source egress ports = %v, want empty", src.ExtraEgressPorts)
+	}
+	updated, err := s.SetSourceEgressPorts(ctx, src.ID, []int{443})
+	if err != nil {
+		t.Fatalf("set egress on upgraded db: %v", err)
+	}
+	if len(updated.ExtraEgressPorts) != 1 || updated.ExtraEgressPorts[0] != 443 {
+		t.Fatalf("egress ports = %v, want [443]", updated.ExtraEgressPorts)
+	}
+}
+
 // pinBeforeMigration writes a database holding every embedded migration below
 // version, leaving that version and everything after it for a later Open to
 // apply.

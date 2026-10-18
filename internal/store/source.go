@@ -42,9 +42,14 @@ type Source struct {
 	// Writable opts a path source into a read+write working directory. It
 	// defaults false: a run reads the tree but the sandbox denies writes to it.
 	// Ignored for a git source, whose managed checkout is always writable.
-	Writable  bool
-	Enabled   bool
-	CreatedAt time.Time
+	Writable bool
+	Enabled  bool
+	// ExtraEgressPorts is the operator-set default egress set every ansible run
+	// that names this source inherits, on top of its declared ports (Decision
+	// 0023). Empty is the default posture: the ansible kind's built-in grant
+	// only. Validated (1..65535), de-duplicated, and sorted at write time.
+	ExtraEgressPorts []int
+	CreatedAt        time.Time
 }
 
 // Inventory is what an ansible run targets. For a dynamic inventory EnvBinding
@@ -71,7 +76,7 @@ type RunSecret struct {
 }
 
 const sourceColumns = `id, name, kind, uri, ref, deploy_key_secret,
-	last_sync_sha, signed, allowed_signers, writable, enabled, created_at`
+	last_sync_sha, signed, allowed_signers, writable, enabled, extra_egress_ports, created_at`
 
 // CreateSource inserts a source. A repeated name returns ErrDuplicate.
 func (s *Store) CreateSource(ctx context.Context, src Source) (Source, error) {
@@ -160,6 +165,32 @@ func (s *Store) SetSourceEnabled(ctx context.Context, id int64, enabled bool) er
 		return wrap("set source enabled", err)
 	}
 	return affectedOne(res, "set source enabled", id)
+}
+
+// SetSourceEgressPorts replaces a source's default egress port set (Decision
+// 0023). The set is validated (1..65535), de-duplicated, and sorted before it is
+// persisted, so a junk declaration is refused here rather than reaching the
+// sandbox profile. Every ansible run that names this source has the set unioned
+// into its declared ports at queue admission; passing an empty set clears the
+// declaration.
+func (s *Store) SetSourceEgressPorts(ctx context.Context, id int64, ports []int) (Source, error) {
+	clean, err := normalizeEgressPorts(ports)
+	if err != nil {
+		return Source{}, err
+	}
+	encoded, err := json.Marshal(clean)
+	if err != nil {
+		return Source{}, wrap("set source egress ports", err)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE source SET extra_egress_ports = ? WHERE id = ?`, string(encoded), id)
+	if err != nil {
+		return Source{}, wrap("set source egress ports", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Source{}, ErrNotFound
+	}
+	return s.GetSource(ctx, id)
 }
 
 // DeleteSource removes a source by name. Its inventories cascade.
@@ -345,16 +376,22 @@ func scanSource(row rowScanner) (Source, error) {
 	var (
 		src                       Source
 		signed, writable, enabled int64
+		egress                    string
 		createdAt                 int64
 	)
 	if err := row.Scan(&src.ID, &src.Name, &src.Kind, &src.URI, &src.Ref,
 		&src.DeployKeySecret, &src.LastSyncSHA, &signed, &src.AllowedSigners,
-		&writable, &enabled, &createdAt); err != nil {
+		&writable, &enabled, &egress, &createdAt); err != nil {
 		return Source{}, err
 	}
 	src.Signed = signed != 0
 	src.Writable = writable != 0
 	src.Enabled = enabled != 0
+	if egress != "" {
+		if err := json.Unmarshal([]byte(egress), &src.ExtraEgressPorts); err != nil {
+			return Source{}, fmt.Errorf("store: source %d egress ports: %w", src.ID, err)
+		}
+	}
 	src.CreatedAt = time.UnixMilli(createdAt).UTC()
 	return src, nil
 }
