@@ -331,24 +331,34 @@ func (s *Sequencer) rearmStep(ctx context.Context, workflowID string, step store
 	newKey := fmt.Sprintf("%s:r%d", step.IdempotencyKey, time.Now().UTC().UnixNano())
 	// The re-armed job must carry EVERY durable replay field the original held,
 	// not a subset: a field dropped here changes how the step runs on resume.
-	// Captures is the field that keeps a bootstrap play's captured values across
-	// a crash/resume — without it, a bootstrap play that lost it would seal
-	// nothing and leave the apply's ab:<workflow> binding empty — and
-	// ExtraVars/TolerateUnreachable are dropped by the same omission, so they are
-	// carried too rather than left for a later crash to expose.
+	// Captures keeps a bootstrap play's captured values across a crash/resume —
+	// without it, a bootstrap play that lost it would seal nothing and leave the
+	// apply's ab:<workflow> binding empty. The grant-bearing fields (Source,
+	// DirReadOnly, Privileged, RunnerName, EgressPorts, SSHIdentityFiles) decide
+	// the resumed run's sandbox and reach, so a crash-resumed step runs with the
+	// same grant it was admitted with (Decision 0023) rather than a read-only
+	// checkout turned writable or a source-scoped egress set dropped. DedupKey
+	// is carried so an alert that resolves still finds the step's approval.
 	newJob, err := s.q.EnqueueGated(ctx, Spec{
 		Runbook:             job.Runbook,
 		Kind:                job.Kind,
 		Trigger:             job.Trigger,
 		Argv:                job.Args.Argv,
 		Dir:                 job.Args.Dir,
+		DirReadOnly:         job.Args.DirReadOnly,
 		VaultProject:        job.Args.VaultProject,
 		RunSecretBinding:    job.Args.RunSecretBinding,
 		Inventory:           job.Args.Inventory,
+		Source:              job.Args.Source,
 		ExtraVars:           job.Args.ExtraVars,
 		TolerateUnreachable: job.Args.TolerateUnreachable,
 		Captures:            job.Args.Captures,
+		RunnerName:          job.Args.RunnerName,
+		Privileged:          job.Args.Privileged,
+		EgressPorts:         job.Args.EgressPorts,
+		SSHIdentityFiles:    job.Args.SSHIdentityFiles,
 		ConcurrencyKey:      job.ConcurrencyKey,
+		DedupKey:            job.DedupKey,
 		Timeout:             time.Duration(job.Args.Timeout),
 		IdempotencyKey:      newKey,
 	})
