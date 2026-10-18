@@ -56,4 +56,4 @@ short.
   mutation step ships a guard no test defends.
 - Red is read-only w.r.t. the repo; blue lands only in a `.worktrees/` lane
   behind the `make check` gate (fast, `-short`; the full `make check-race` runs
-  at pre-push/merge), with logical-unit commits and no trailers.
+  in CI and at merge), with logical-unit commits and no trailers.

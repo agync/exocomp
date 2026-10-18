@@ -16,7 +16,7 @@ The gate is not advisory: the pre-commit hook checks the index out into a temp
 tree (`git checkout-index`) and runs the fast `make check` (fmt-check, vet,
 lint, tidy-check, `go test -short`) there on every commit — never against the
 working tree, so unstaged edits neither mask nor cause a failure. The full race
-suite (`make check-race`) is the integration gate at pre-push and merge.
+suite (`make check-race`) is the integration gate in CI and at merge.
 commit-msg rejects a title over 52 chars or off the conventional prefix. A
 brief that ignores either produces an agent that burns its budget fighting the
 hook.
@@ -57,7 +57,7 @@ clause is a defect, not a default.
    method). State it in the brief; do not leave it to the runner default.
 7. **Concurrency-aware gating.** The per-commit gate is the fast `make check`
     (`-short`, seconds to a minute); the full race suite (`make check-race`,
-    `go test -race ./...`) is the integration gate at pre-push and merge, and
+    `go test -race ./...`) is the integration gate in CI and at merge, and
     several lanes may hit it at once. Tell the lane to set generous gate
     timeouts and be patient, never to bypass the hook. Allow ONE retry of a
     KNOWN flake — the `flake-triage` skill is this repo's source of truth for

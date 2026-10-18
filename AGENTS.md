@@ -32,10 +32,9 @@ Breaking any of these fails review, regardless of how good the change is otherwi
 11. Parallel work happens in worktrees under `.worktrees/`; `main` stays linear
     (rebase then fast-forward; merge commits only for milestone integrations).
 12. Automation over manual conformance: `make check` (fast, `-short`) gates every
-    commit via the hooks; the full `make check-race` (`-race ./...`) gates
-    pre-push and worktree merges. Hooks are declared in
-    `.pre-commit-config.yaml`; activate once per clone with `pip install
-    pre-commit && make hooks`.
+    commit via the hooks; the full `make check-race` (`-race ./...`) gates CI
+    and worktree merges. Hooks are declared in `.pre-commit-config.yaml`;
+    activate once per clone with `pip install pre-commit && make hooks`.
 13. Agent scratch lives in the brain: whenever `.agents/brain/` exists, session
     documents (plans, specs, inbox, tasks) go directly there, and any
     agent-specific scratch under its own directory (e.g.
