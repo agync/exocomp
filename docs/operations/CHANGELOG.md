@@ -14,6 +14,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.2.0](https://github.com/agync/exocomp/compare/v0.1.2...v0.2.0) (2026-10-18)
+
+
+### Features
+
+* **cli:** source egress command ([5414b12](https://github.com/agync/exocomp/commit/5414b129f3d56bec55a0bdf0fe074110c534734c))
+* **queue:** union source egress at admission ([e0d2571](https://github.com/agync/exocomp/commit/e0d25710f01b6a62d30dcef4a6c29bc37becec1a))
+* **store:** persist a source egress default ([05f66a2](https://github.com/agync/exocomp/commit/05f66a2a50bea57b41271607bac7f7376b62cd16))
+* **web:** read and write the source egress default ([f3e4d20](https://github.com/agync/exocomp/commit/f3e4d20586a0ca69a842c67e9f25c2386abd6311))
+* **wire:** project the source egress default ([9c1a506](https://github.com/agync/exocomp/commit/9c1a506c045f4fd2d50b16f1de9a380bb7910e51))
+
+
+### Bug Fixes
+
+* **adhoc:** run ad-hoc ansible in the source venv ([87be172](https://github.com/agync/exocomp/commit/87be1721e57de4e295f72e86fa67684aee16ddff))
+* **deps:** serialise cold venv provisioning ([1c8858b](https://github.com/agync/exocomp/commit/1c8858b923d152afb4b839d10f4832c5aa37f753))
+* **queue:** rearm keeps every durable replay field ([a7499f7](https://github.com/agync/exocomp/commit/a7499f71edeb9e5d9298775858ac9d952531dc60))
+* **web:** render a rule's effective egress ([4351010](https://github.com/agync/exocomp/commit/43510100695ced0a460c1f1af6960fcd9155b116))
+* **web:** show egress ports on the approval page ([142af20](https://github.com/agync/exocomp/commit/142af20e494a093e1347c1c7442132ad1c839a00))
+
 ## [0.1.2](https://github.com/agync/exocomp/compare/v0.1.1...v0.1.2) (2026-10-17)
 
 
