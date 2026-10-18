@@ -15,6 +15,13 @@ import (
 // resolves.
 func fakeUV(t *testing.T, counter string) string {
 	t.Helper()
+	return fakeUVDelayed(t, counter, "0")
+}
+
+// fakeUVDelayed is fakeUV with a sleep (seconds, as sleep(1) takes it) inside
+// the `venv` step, so concurrent callers overlap and a race is observable.
+func fakeUVDelayed(t *testing.T, counter, delay string) string {
+	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "uv")
 	script := `#!/bin/sh
@@ -22,6 +29,7 @@ echo "$@" >> "` + counter + `"
 args="$@"
 case "$args" in
   *" venv "*|*"venv "*)
+    sleep ` + delay + `
     for a in "$@"; do target="$a"; done
     mkdir -p "$target/bin" || exit 1
     mkdir -p "$target/lib/python3.14/site-packages" || exit 1

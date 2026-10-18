@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -114,11 +116,25 @@ func EnsureVenv(ctx context.Context, spec VenvSpec) (Venv, error) {
 	dir := filepath.Join(spec.CacheRoot, spec.Source, spec.Manifest.Hash)
 	v := venvPaths(dir)
 
+	// Fast path: an already-complete venv needs no lock and no uv invocation.
 	if markerMatches(dir, spec.Manifest.Hash) {
 		return v, nil
 	}
 
-	v, err := provision(ctx, spec, dir, v)
+	// Serialise provisioning per venv dir across goroutines and processes. The
+	// lock is held across a re-check of the marker so a waiter that lost the
+	// race becomes a cache hit instead of a second uv invocation.
+	release, err := acquireVenvLock(ctx, dir, venvLockPath(spec))
+	if err != nil {
+		return Venv{}, err
+	}
+	defer release()
+
+	if markerMatches(dir, spec.Manifest.Hash) {
+		return venvPaths(dir), nil
+	}
+
+	v, err = provision(ctx, spec, dir, v)
 	if err != nil {
 		// A partial venv would be reused as if complete on the next run; remove
 		// it so the failure is not sticky.
@@ -365,4 +381,74 @@ func slug(s string) string {
 func shortHash(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])[:8]
+}
+
+// lockPollInterval is how often a caller waiting on another process's venv
+// lock retries. Provisioning takes seconds, so a short poll costs nothing and
+// keeps the wait cancellable, which a blocking flock is not.
+const lockPollInterval = 50 * time.Millisecond
+
+// venvSems holds one single-slot semaphore per venv dir, so callers in this
+// process queue on a channel (cancellable) before touching the file lock.
+var venvSems sync.Map
+
+// venvLockPath is the advisory lock file for a venv. It sits in the cache root,
+// which the resolver sandbox cannot write: the sandbox is granted the per-source
+// directory, so a lock there could be replaced with a symlink by a build
+// backend and followed by the daemon. It is also outside the venv dir, which
+// provision removes.
+func venvLockPath(spec VenvSpec) string {
+	return filepath.Join(spec.CacheRoot, spec.Source+"-"+spec.Manifest.Hash+".lock")
+}
+
+// acquireVenvLock serialises provisioning of dir across goroutines and
+// processes, using the advisory lock file at lockPath. The returned release
+// must be called on every path.
+func acquireVenvLock(ctx context.Context, dir, lockPath string) (func(), error) {
+	sem, _ := venvSems.LoadOrStore(dir, make(chan struct{}, 1))
+	slot := sem.(chan struct{})
+	select {
+	case slot <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	file, err := lockVenvFile(ctx, lockPath)
+	if err != nil {
+		<-slot
+		return nil, err
+	}
+	return func() {
+		// Closing the file drops the flock.
+		_ = file.Close()
+		<-slot
+	}, nil
+}
+
+// lockVenvFile takes an exclusive flock on path without blocking, retrying
+// until ctx ends.
+func lockVenvFile(ctx context.Context, path string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("deps: venv lock dir: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("deps: open venv lock: %w", err)
+	}
+	for {
+		err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return file, nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) {
+			_ = file.Close()
+			return nil, fmt.Errorf("deps: lock venv: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			_ = file.Close()
+			return nil, ctx.Err()
+		case <-time.After(lockPollInterval):
+		}
+	}
 }
