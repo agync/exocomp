@@ -464,3 +464,22 @@ func TestAnsibleFailingPlaybookExitsNonZero(t *testing.T) {
 		t.Errorf("exit code = 0, want non-zero:\n%s", strings.Join(sink.msgs(""), "\n"))
 	}
 }
+
+// A missing toolchain names the binary, the PATH searched and the three ways to
+// fix it, instead of a bare exec error.
+func TestAnsibleMissingBinaryNamesPathAndRemedy(t *testing.T) {
+	empty := t.TempDir()
+	t.Setenv("PATH", empty)
+
+	var sink collector
+	_, err := executor.NewAnsible(executor.AnsibleOptions{PrivateDirRoot: t.TempDir()}).Run(context.Background(),
+		executor.Spec{Kind: executor.KindAnsible, Argv: executor.AnsibleAdhocArgv("localhost", "", "ping", "")}, &sink)
+	if err == nil {
+		t.Fatal("run: want an error, got nil")
+	}
+	for _, want := range []string{"ansible not found on PATH", empty, "Python manifest"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+}

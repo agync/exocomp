@@ -100,7 +100,7 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 
 	// Resolve the per-source venv before the run (Decision 0011 vendoring step). A
 	// failure fails the job: a run must not proceed against half-met deps.
-	venv, err := resolveProjectVenv(ctx, d.dataDir, ansiblePlaybookPath(spec.Argv))
+	venv, err := resolveProjectVenv(ctx, d.dataDir, ansibleVenvAnchor(spec.Argv, job.Args.Dir, job.Args.Source))
 	if err != nil {
 		return executor.Result{}, err
 	}

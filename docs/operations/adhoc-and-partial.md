@@ -29,6 +29,15 @@ exocomp command --host 'fedora:!nas' --become -- dnf -y upgrade
 exocomp command --source homelab --host db -- pg_isready
 ```
 
+An ad-hoc run from a registered source resolves that source's Python manifest like a playbook run
+does ([Decision 0011](../decisions/0011-project-dependency-resolution.md)). When the checkout
+declares `ansible-core`, the run uses the venv's `ansible`; otherwise it uses the `ansible` on
+`PATH`, with the venv's libraries when the source declares any. A manifest that will not resolve
+fails the run, as it fails a playbook's, and the web form has no source-less fallback. Collections
+stay on the shared cache. With no source the run uses the `ansible` on `PATH`; when that is missing
+the job fails naming the `PATH` it searched, so a host install whose service manager starts the
+daemon with a minimal `PATH` needs `ansible` on it.
+
 `--host` takes any ansible pattern: a host, a group, or an expression like
 `fedora:!nas`. `--limit` is an accepted alias. Everything after `--` is the
 command; it is joined into the module's single argument and never spread onto

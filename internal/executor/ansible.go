@@ -423,7 +423,9 @@ func (a *Ansible) binary(spec Spec) (string, error) {
 	}
 	resolved, err := exec.LookPath(base)
 	if err != nil {
-		return "", fmt.Errorf("executor: ansible: %w", err)
+		return "", fmt.Errorf("executor: ansible: %s not found on PATH %q; install ansible-core there, add its "+
+			"directory to PATH, or run from a source whose Python manifest declares ansible-core",
+			base, os.Getenv("PATH"))
 	}
 	return resolved, nil
 }

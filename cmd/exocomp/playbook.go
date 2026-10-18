@@ -548,7 +548,7 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 	}
 	// Resolve the per-source venv (Decision 0011 vendoring step) before draining the
 	// job inline. Fail-closed: a manifest that will not resolve stops the run.
-	venv, err := resolveProjectVenv(ctx, dir, ansiblePlaybookPath(spec.Argv))
+	venv, err := resolveProjectVenv(ctx, dir, ansibleVenvAnchor(spec.Argv, spec.Dir, spec.Source))
 	if err != nil {
 		return store.Job{}, err
 	}
