@@ -1,8 +1,9 @@
-# The gate layer: `make check` and `make check-race` stay the Go gates and run
-# as repo-local system hooks; hygiene and commit-format come from standard
-# hooks. Activate once per clone with `pip install pre-commit && make hooks`
-# (which installs the pre-commit, pre-push, and commit-msg git hooks).
-# Run everything with `make check-hygiene` (pre-commit run --all-files).
+# The gate layer: `make check` stays the per-commit Go gate and runs as a
+# repo-local system hook; hygiene and commit-format come from standard hooks.
+# The full `make check-race` is not a local hook: it runs in CI and at the
+# worktree-merge integration. Activate once per clone with `pip install
+# pre-commit && make hooks` (which installs the pre-commit and commit-msg git
+# hooks). Run everything with `make check-hygiene` (pre-commit run --all-files).
 default_stages: [pre-commit]
 
 repos:
@@ -53,10 +54,3 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      - id: make-check-race
-        name: make check-race
-        entry: make check-race
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]

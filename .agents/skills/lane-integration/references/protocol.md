@@ -96,8 +96,8 @@ an integrator one.
 make check-race
 ```
 
-This is the full gate (`-race ./...`) that pre-push and worktree-merge
-integration run (AGENTS.md invariant 12); run it explicitly here because a
+This is the full gate (`-race ./...`) that CI and worktree-merge integration
+run (AGENTS.md invariant 12); run it explicitly here because a
 fast-forward creates no commit and so fires no hook. Full run is ~2.5 min solo.
 
 Run it to completion in the foreground, in this same turn, with a generous
@@ -130,7 +130,7 @@ not take — investigate, do not force with `-D`.
 
 Guidance for the lane building the work, not just the integrator landing it:
 
-- `make check-race` — via the pre-push hook or run standalone — takes ~4 min
+- `make check-race` — run standalone or in CI — takes ~4 min
   under the concurrent load several lanes gating at once impose (see
   flake-triage's load ceiling; step 5 above quotes ~2.5 min solo). A builder
   MUST run it in the FOREGROUND and must NOT background it and end the turn —

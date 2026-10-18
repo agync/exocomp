@@ -7,8 +7,8 @@ description: The single source of truth for this repo's known gate flakes, so ev
 
 `make check` runs `fmt-check vet lint tidy-check test` (Makefile), where `test`
 is `go test -short ./...` — the fast per-commit gate. The full `make check-race`
-(`fmt-check vet lint tidy-check test-race`, `go test -race ./...`) runs at
-pre-push and as the worktree-merge integration gate. A subset of the race suite
+(`fmt-check vet lint tidy-check test-race`, `go test -race ./...`) runs in CI
+and as the worktree-merge integration gate. A subset of the race suite
 fails intermittently under concurrent gating — several worktrees under
 `.worktrees/` running `make check-race` at once — for reasons unrelated to the
 diff under test. This file is the one place that enumerates them, so a flake is

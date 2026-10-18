@@ -41,7 +41,7 @@ short. Do not improvise past a stop condition.
    both claim the same number — renumber the later one and move its test.
 4. **Fast-forward.** `git merge --ff-only` from the repo root. Refused → STOP.
 5. **Check once.** Run `make check-race` at the integrated tip — the full gate
-    invariant 12 wires into the pre-push hook and worktree merges. Retry at most
+    invariant 12 wires into CI and worktree merges. Retry at most
     **once**, and only for a timing flake the flake-triage skill lists. A real
     failure → report in full; do not revert or fix.
 6. **Tear down.** Green only: remove the worktree, delete the branch.

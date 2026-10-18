@@ -16,7 +16,7 @@ build: ## Build the static exocomp binary into bin/
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/exocomp ./cmd/exocomp
 
 # check is the fast per-commit gate; the full -race suite is check-race,
-# which runs at pre-push and as the worktree-merge integration gate.
+# which runs in CI and as the worktree-merge integration gate.
 check: fmt-check vet lint tidy-check test ## Run fmt-check, vet, lint, and the fast -short tests
 
 check-race: fmt-check vet lint tidy-check test-race ## Run fmt-check, vet, lint, and the full -race suite
@@ -27,10 +27,9 @@ check-hygiene: ## Run all pre-commit framework hooks over every tracked file
 # Install the git hooks the framework drives. Run once per clone after
 # `pip install pre-commit`. `core.hooksPath` (the old custom-dispatcher setup)
 # is cleared so git uses the installed hooks.
-hooks: ## Install the pre-commit git hooks (pre-commit, pre-push, commit-msg)
+hooks: ## Install the pre-commit git hooks (pre-commit, commit-msg)
 	git config --unset core.hooksPath 2>/dev/null || true
 	pre-commit install
-	pre-commit install --hook-type pre-push
 	pre-commit install --hook-type commit-msg
 
 fmt: ## Format source files

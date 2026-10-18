@@ -36,7 +36,7 @@ file and `AGENTS.md` disagree, `AGENTS.md` wins.
 
 Commits are gated by the fast `make check` (fmt, vet, lint, tidy, `go test
 -short`) and the commit-message rules above via the pre-commit hooks; the
-full `make check-race` (`-race ./...`) runs at pre-push and worktree merges.
+full `make check-race` (`-race ./...`) runs in CI and at worktree merges.
 Activate them once per clone:
 
 ```sh

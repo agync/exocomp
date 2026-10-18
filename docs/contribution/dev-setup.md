@@ -25,7 +25,7 @@ exocomp compiles to a single static Go binary (`exocompd` / `exocomp`) with zero
 
 ## Installing Git hooks
 
-The repository enforces pre-commit, pre-push, and commit-msg quality gates via `pre-commit`:
+The repository enforces pre-commit and commit-msg quality gates via `pre-commit`:
 
 ```bash
 pip install pre-commit
@@ -35,7 +35,9 @@ make hooks
 This wires:
 - **`pre-commit`**: Automatically runs `make check` (formatting, vet, lint, tidy, `go test -short`).
 - **`commit-msg`**: Rejects titles longer than 52 characters, non-conventional formats, or commit trailers (Invariant 9).
-- **`pre-push`**: Runs the full `make check-race` suite.
+
+The full `make check-race` suite is not a local hook; it runs in CI and at
+worktree merges (Invariant 12).
 
 ## Building the binary
 

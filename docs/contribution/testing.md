@@ -29,7 +29,7 @@ Executes:
 
 ### 2. Full race gate (`make check-race`)
 
-Runs automatically on `pre-push` and gates all worktree merges to `main`:
+Runs in CI and gates all worktree merges to `main`:
 
 ```bash
 make check-race

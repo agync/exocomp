@@ -16,7 +16,7 @@ summary, <= 52 chars; NO trailers (no Co-Authored-By / Signed-off-by /
 Generated-with); explicit staging (never git add -A); no-slop comments (WHY
 not what, match surrounding density); never sudo. The pre-commit hook runs the
 FAST make check against the index on EVERY commit (`go test -short`); the full
-`make check-race` is the integration gate at pre-push and merge — never bypass
+`make check-race` is the integration gate in CI and at merge — never bypass
 it, be patient, and expect commit-msg to reject a >52-char or
 non-conventional title. REUSE existing machinery; do not reinvent. The queue is
 the only execution authority. Subprocess success is exit-code-only; secrets
