@@ -152,6 +152,128 @@ func TestRearmStepCarriesCaptures(t *testing.T) {
 	}
 }
 
+// assertReplayFields checks the durable grant and identity fields a re-armed
+// step must keep from the job it was admitted with. It reports every mismatch
+// rather than stopping at the first, so one run names all the fields a broken
+// re-arm dropped.
+func assertReplayFields(t *testing.T, label string, job store.Job) {
+	t.Helper()
+	if job.Args.Source != "fleet" {
+		t.Errorf("%s: Source = %q, want fleet", label, job.Args.Source)
+	}
+	if !job.Args.DirReadOnly {
+		t.Errorf("%s: DirReadOnly = false, want true", label)
+	}
+	if !job.Args.Privileged {
+		t.Errorf("%s: Privileged = false, want true", label)
+	}
+	if job.Args.RunnerName != "capped-runner" {
+		t.Errorf("%s: RunnerName = %q, want capped-runner", label, job.Args.RunnerName)
+	}
+	if got, want := job.Args.EgressPorts, []int{443, 8443}; !reflect.DeepEqual(got, want) {
+		t.Errorf("%s: EgressPorts = %v, want %v", label, got, want)
+	}
+	if got, want := job.Args.SSHIdentityFiles, []string{"/etc/exocomp/keys/deploy"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("%s: SSHIdentityFiles = %v, want %v", label, got, want)
+	}
+	if job.Args.Dir != "/srv/sources/fleet" {
+		t.Errorf("%s: Dir = %q, want /srv/sources/fleet", label, job.Args.Dir)
+	}
+	if job.ConcurrencyKey != "fleet:deploy" {
+		t.Errorf("%s: ConcurrencyKey = %q, want fleet:deploy", label, job.ConcurrencyKey)
+	}
+	if job.DedupKey != "alertmanager:fp:disk" {
+		t.Errorf("%s: DedupKey = %q, want alertmanager:fp:disk", label, job.DedupKey)
+	}
+}
+
+// TestRearmStepCarriesGrantFields proves a crash-resumed workflow step keeps
+// every durable replay field its job was admitted with, not a hand-picked
+// subset. A re-armed step whose literal is missing Source, DirReadOnly,
+// Privileged, RunnerName, EgressPorts, or SSHIdentityFiles runs with a
+// different grant: a read-only checkout turned writable, a source-scoped
+// egress set dropped, a privileged step silently downgraded. DedupKey is
+// carried too because an alert that resolves finds a pending approval by the
+// job's dedup_key, so a re-armed step must keep it (Decision 0023 prerequisite).
+//
+// Mutation check: dropping any carried field from rearmStep's Spec, or the
+// DirReadOnly/Privileged pair from EnqueueGated, trips the matching assertion
+// on the gated job (the Spec->JobArgs threading guard) or on the re-armed job.
+func TestRearmStepCarriesGrantFields(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	q, st := newSeqQueue(t, filepath.Join(dir, "exocomp.db"))
+	seq := NewSequencer(q)
+	ctx := context.Background()
+
+	const wf = "ansible:wf:rearm-grants"
+	play := Step{
+		Kind: "ansible-play",
+		Spec: Spec{
+			Runbook:          "playbook",
+			Kind:             "ansible",
+			Trigger:          "workflow",
+			Argv:             []string{"/usr/bin/ansible-playbook", "site.yml"},
+			Dir:              "/srv/sources/fleet",
+			DirReadOnly:      true,
+			Source:           "fleet",
+			RunnerName:       "capped-runner",
+			Privileged:       true,
+			EgressPorts:      []int{443, 8443},
+			SSHIdentityFiles: []string{"/etc/exocomp/keys/deploy"},
+			ConcurrencyKey:   "fleet:deploy",
+			DedupKey:         "alertmanager:fp:disk",
+		},
+	}
+	if err := seq.Start(ctx, wf, []Step{play}); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	step := mustSteps(t, st, wf)[0]
+	if step.JobID == nil {
+		t.Fatal("gated step has no job id")
+	}
+	orig, err := st.GetJob(ctx, *step.JobID)
+	if err != nil {
+		t.Fatalf("get gated job: %v", err)
+	}
+	// The gated job the ledger references must already hold the grant: if the
+	// Spec->JobArgs threading (EnqueueGated) dropped it, the resume has nothing
+	// to carry and a read-only source silently becomes writable.
+	assertReplayFields(t, "gated job", orig)
+
+	// Crash mid-run: the ledger step is running over an interrupted job, the
+	// exact shape runStep hands rearmStep.
+	if err := st.StartStep(ctx, wf, step.StepNo, orig.ID); err != nil {
+		t.Fatalf("start step: %v", err)
+	}
+	if err := st.TransitionJob(ctx, orig.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
+		t.Fatalf("run job: %v", err)
+	}
+	if err := st.TransitionJob(ctx, orig.ID, store.StateRunning, store.StateInterrupted); err != nil {
+		t.Fatalf("interrupt job: %v", err)
+	}
+	crashed, err := st.GetJob(ctx, orig.ID)
+	if err != nil {
+		t.Fatalf("re-read crashed job: %v", err)
+	}
+	if !nonDecision(crashed) {
+		t.Fatalf("interrupted job is not a non-decision; resume would not re-arm it")
+	}
+
+	rearmed, err := seq.rearmStep(ctx, wf, step, crashed)
+	if err != nil {
+		t.Fatalf("rearm: %v", err)
+	}
+	if rearmed.ID == orig.ID {
+		t.Fatal("rearm reused the crashed job rather than enqueueing a fresh one")
+	}
+	if rearmed.State != store.StateAwaitingApproval {
+		t.Errorf("re-armed job is %s, want gated at awaiting_approval", rearmed.State)
+	}
+	assertReplayFields(t, "re-armed job", rearmed)
+}
+
 // TestResumeAllSkipsInlineOnlyWorkflows is the daemon-vs-upgrade gate (backlog
 // item 2, evidence for item 1). A crash leaves two incomplete workflows in one
 // ledger: a normal shell chain and an operator-inline one (an upgrade

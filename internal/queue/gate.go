@@ -37,6 +37,7 @@ func (q *Queue) EnqueueGated(ctx context.Context, spec Spec) (store.Job, error) 
 		Args: store.JobArgs{
 			Argv:                spec.Argv,
 			Dir:                 spec.Dir,
+			DirReadOnly:         spec.DirReadOnly,
 			Timeout:             store.Duration(spec.Timeout),
 			VaultProject:        spec.VaultProject,
 			RunSecretBinding:    spec.RunSecretBinding,
@@ -46,6 +47,7 @@ func (q *Queue) EnqueueGated(ctx context.Context, spec Spec) (store.Job, error) 
 			TolerateUnreachable: spec.TolerateUnreachable,
 			Captures:            spec.Captures,
 			RunnerName:          spec.RunnerName,
+			Privileged:          spec.Privileged,
 			EgressPorts:         spec.EgressPorts,
 			SSHIdentityFiles:    spec.SSHIdentityFiles,
 		},
