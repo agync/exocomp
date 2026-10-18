@@ -207,6 +207,17 @@ keeps exactly the port-22 posture, and a grant on one run never touches another'
 are validated (`1..65535`) and de-duplicated when declared, so a typo is refused at the
 CLI/API rather than reaching a run.
 
+A source's runs do not have to repeat the declaration. `exocomp source egress <name>
+[port...]` records an operator-set default on the source, and every ansible run naming it
+inherits that set, unioned with the run's own `--egress` and a playbook rule's declared
+ports into the job row at queue admission ([Decision 0023](../decisions/0023-source-egress-defaults.md)).
+The default is **operator-set through the daemon only** — a checked-out playbook can never
+grant itself a port. It is edited on the source's detail page: an **Egress default** card,
+and, for an operator, a form POSTing to `/sources/{name}/egress`, the web face of the same
+verb. The rules page renders each playbook rule's **effective** egress — the union — so a
+rule that declares nothing still shows the ports its unattended runs open rather than
+reading as no egress guard at all.
+
 This is a deliberate widening, and its limit is the same one the tofu section above
 states: **Landlock filters egress by port, not by destination.** Granting 2222 permits a
 run to open 2222 to *any* host, not only the intended inventory node — the grant cannot be

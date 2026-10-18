@@ -377,15 +377,22 @@ original's posture the same way and offers the escalation as the launcher's
 fail-tinted toggle, unchecked: a rerun re-escalates only by a deliberate act.
 
 **Run grant tiles.** The privilege posture is only half the sandbox picture: a
-sandboxed run's `--egress` port set and `--ssh-identity` files — what the
+sandboxed run's effective egress port set and `--ssh-identity` files — what the
 sandbox permitted beyond its defaults — render as RUN CONFIGURATION tiles
 (`Egress ports`, `SSH identity`), each a label over a mono value in the same
-`.config` grid the other run facts use. A grant appears only when it exists: a
-run with no declaration is the quiet default posture and carries neither tile,
-and a privileged run forfeited the sandbox so no grant applied — the
-`Privileged` tile names that posture and the grant tiles stay absent, never
-implying an unsandboxed run was restricted to the declared grant. A file is
-shown as a PATH, never as key material.
+`.config` grid the other run facts use. The `Egress ports` tile shows the row's
+**effective** set, which is not only the run's declaration: a named source's
+operator-set default is unioned into the row at queue admission (Decision 0023),
+so a run with no `--egress` still carries the tile when its source declares one.
+A grant with nothing behind it — no declaration and no source default — adds no
+tile: that run is the quiet default posture and carries neither. A privileged
+run forfeited the sandbox so no grant applied — the `Privileged` tile names that
+posture and the grant tiles stay absent, never implying an unsandboxed run was
+restricted to the declared grant. A file is shown as a PATH, never as key
+material. The same effective set is rendered wherever a run's or a rule's reach
+is shown: the approval page carries an `Egress ports` block and the rules row
+carries an `egress {ports}` guard, the rule's declared ports unioned with its
+named source's default.
 
 **Step rail.** A row of 10px dots rendering a workflow's ledger at a glance, using
 the same five states as the chip.

@@ -8,6 +8,22 @@ Newest first.
 
 ## 2026-10-18
 
+- **Effective-egress surfaces completed and the docs corrected.** The rules page now
+  renders a playbook rule's effective egress — its declared ports unioned with the default
+  set of the source it names, the same union the queue applies at admission — so a rule
+  that declares nothing no longer reads as having no egress guard while its unattended runs
+  open a port. [Running the daemon](operations/serve.md) documents the source's **Egress
+  default** card and its `POST /sources/{name}/egress` form beside the per-run and per-rule
+  grants. [Job sandboxing](guide/sandbox.md) states the real egress shape (the kind's
+  built-in port ∪ an operator-set source default ∪ the run's declaration) instead of kind
+  alone. [The design system](design/DESIGN.md) corrects "a run with no declaration carries
+  neither grant tile" and records the approval page's egress block and the rules row's
+  effective-egress guard. [The architecture map](contribution/architecture.md) corrects
+  "network egress is blocked unless `--privileged`": egress is port-scoped, and
+  `--privileged` opts out of the sandbox rather than granting egress. [The bundle
+  index](index.md), [user guide index](guide/index.md), and [sources guide](guide/sources.md)
+  name the operator-set source default beside `--egress`.
+
 - **New page** [decisions/0023](decisions/0023-source-egress-defaults.md): a source-scoped
   default egress set for ansible runs, merged at queue admission. The
   [decision index](decisions/index.md) gains its row, and the threat model's port-only egress

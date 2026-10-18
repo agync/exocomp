@@ -45,6 +45,23 @@ Selecting a source opens its detail view, where you can inspect playbooks, run h
 
 <p><img src="../design/assets/web/1d-source-detail.png" alt="Source detail drawer"></p>
 
+## Source-scoped egress default
+
+A source whose playbooks always need the same extra port records it once, beside the other
+source verbs:
+
+```bash
+exocomp source egress homelab 443 9090
+```
+
+`source egress <name> [port...]` sets the source's default egress set, replacing any previous
+one; with no ports it clears the declaration. Every ansible run that names the source inherits
+the set at queue admission, unioned with the run's own `--egress` grant and the ansible kind's
+built-in SSH port 22. It is **operator-set through the daemon only** — a checked-out playbook
+can never grant itself a port. The source's detail page shows the default (an **Egress
+default** card), and the rules page shows each playbook rule's effective egress. See
+[Source-scoped egress default](../operations/sources.md#source-scoped-egress-default).
+
 ## Dependency management in sources
 
 exocomp enforces strict per-source isolation:

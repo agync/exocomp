@@ -41,4 +41,8 @@ internal/
    - Access to the database file (`exocomp.db`) is denied.
    - Access to the keyring (`keyring.age`) and host keys is denied.
    - Access to the container runtime socket is denied.
-   - Network egress is blocked unless `--privileged` is explicitly granted.
+   - Network egress is scoped by port, not blocked. Under `enforcing` an ansible run
+     reaches TCP 22; more ports are granted with `--egress`, a playbook rule's declared
+     ports, or the named source's operator-set default (union applied at queue
+     admission). `--privileged` opts out of the sandbox entirely — the `disabled` tier,
+     full host access — rather than being the egress mechanism.
