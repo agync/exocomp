@@ -114,8 +114,9 @@ func TestResolveSourceCollectionsProvisionsPerSourceDir(t *testing.T) {
 }
 
 // TestResolveSourceCollectionsSkipsAdhoc: an ad-hoc run names no playbook, so
-// ansiblePlaybookPath returns "" and collections resolve skips it — matching
-// the venv resolve — with no ansible-galaxy invocation.
+// ansiblePlaybookPath returns "" and collections resolve skips it, with no
+// ansible-galaxy invocation. The venv resolve is the exception: an ad-hoc run
+// from a source finds it through ansibleVenvAnchor.
 func TestResolveSourceCollectionsSkipsAdhoc(t *testing.T) {
 	forceDisabledTier(t)
 	binDir := t.TempDir()
@@ -501,5 +502,106 @@ exit 0
 	}
 	if _, statErr := os.Stat(filepath.Join(c.Dir, "ansible_collections", "abn", "unifi_network")); statErr != nil {
 		t.Fatalf("local collection was not installed: %v", statErr)
+	}
+}
+
+// TestAnsibleVenvAnchor: a playbook run discovers its manifest beside the
+// playbook, an ad-hoc run from a source discovers it in the source checkout, and
+// an ad-hoc run with no source stays on the image toolchain.
+func TestAnsibleVenvAnchor(t *testing.T) {
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "pyproject.toml"),
+		[]byte("[project]\nname = \"x\"\nversion = \"0\"\ndependencies = [\"ansible-core\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	adhoc := executor.AnsibleAdhocArgv("localhost", "", "ping", "")
+	play := executor.AnsibleArgv("playbooks/site.yml", "")
+
+	if got := ansibleVenvAnchor(play, src, "homelab"); got != ansiblePlaybookPath(play) {
+		t.Errorf("playbook anchor = %q, want the playbook path %q", got, ansiblePlaybookPath(play))
+	}
+	if got := ansibleVenvAnchor(adhoc, src, ""); got != "" {
+		t.Errorf("sourceless ad-hoc anchor = %q, want empty", got)
+	}
+	if got := ansibleVenvAnchor(adhoc, "", "homelab"); got != "" {
+		t.Errorf("dirless ad-hoc anchor = %q, want empty", got)
+	}
+	anchor := ansibleVenvAnchor(adhoc, src, "homelab")
+	if filepath.Dir(anchor) != src {
+		t.Fatalf("ad-hoc anchor %q is not in the source checkout %q", anchor, src)
+	}
+	m, err := deps.DiscoverPython(filepath.Dir(anchor))
+	if err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	if !m.HasDeps() || m.Root != src {
+		t.Errorf("manifest = %+v, want the source's pyproject with deps", m)
+	}
+}
+
+// fakeVenvUV writes a uv stand-in whose `venv` subcommand lays down the bin/python
+// and site-packages a real venv carries, plus an ansible-playbook and an ansible
+// that records its environment to probe.
+func fakeVenvUV(t *testing.T, bin, probe string) {
+	t.Helper()
+	script := `#!/bin/sh
+case "$*" in
+  *venv*)
+    for a in "$@"; do target="$a"; done
+    mkdir -p "$target/bin" "$target/lib/python3.14/site-packages" || exit 1
+    : > "$target/bin/python"; chmod +x "$target/bin/python"
+    printf '#!/bin/sh\nexit 0\n' > "$target/bin/ansible-playbook"; chmod +x "$target/bin/ansible-playbook"
+    printf '#!/bin/sh\nenv > ` + probe + `\nexit 0\n' > "$target/bin/ansible"; chmod +x "$target/bin/ansible"
+    ;;
+esac
+exit 0
+`
+	if err := os.WriteFile(filepath.Join(bin, "uv"), []byte(script), 0o700); err != nil {
+		t.Fatalf("write fake uv: %v", err)
+	}
+}
+
+// TestAnsibleDriverAdhocRunsInSourceVenv proves an ad-hoc run from a source that
+// declares dependencies executes the venv's ansible, with no ansible on PATH.
+func TestAnsibleDriverAdhocRunsInSourceVenv(t *testing.T) {
+	forceDisabledTier(t)
+	dir := initForSource(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	probe := filepath.Join(t.TempDir(), "child.env")
+	binDir := t.TempDir()
+	fakeVenvUV(t, binDir, probe)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
+	if p, err := exec.LookPath("ansible"); err == nil {
+		t.Skipf("ansible on PATH at %s; the test needs it absent", p)
+	}
+
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "requirements.txt"), "ansible-core\n")
+
+	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	q := queue.New(st, ansibleJobDriver{store: st, dataDir: dir}, queue.Options{Workers: 1, PollInterval: 20 * time.Millisecond})
+	job, err := q.Enqueue(ctx, queue.Spec{
+		Runbook: "ansible",
+		Kind:    executor.KindAnsible,
+		Trigger: "manual",
+		Argv:    executor.AnsibleAdhocArgv("localhost", "", "ping", ""),
+		Dir:     src,
+		Source:  "demo",
+	})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := q.Drain(ctx); err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	if _, err := os.Stat(probe); err != nil {
+		t.Fatalf("the venv's ansible did not run (job %d):\n%s", job.ID, jobEventText(t, job.ID))
 	}
 }

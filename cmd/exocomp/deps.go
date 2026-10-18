@@ -35,9 +35,9 @@ const galaxyTool = "ansible-galaxy"
 // that would reach its own state root under a granted HOME.
 const galaxyCacheDir = "cache/galaxy"
 
-// resolveProjectVenv resolves the per-source uv venv a playbook run executes
-// inside (Decision 0011). It discovers the project's Python manifest from the
-// playbook's directory; a source that declares none returns a zero Venv, so the
+// resolveProjectVenv resolves the per-source uv venv a run executes inside
+// (Decision 0011). It discovers the project's Python manifest from the
+// directory of anchor (see ansibleVenvAnchor); a source that declares none returns a zero Venv, so the
 // run stays on the shared image toolchain — which is also what keeps DR-path
 // runbooks (seeded standalone, carrying no manifest) on the image, never a
 // project venv. A declared manifest is resolved into cache/python/<source>/<hash>,
@@ -45,14 +45,14 @@ const galaxyCacheDir = "cache/galaxy"
 //
 // It is fail-closed: a manifest that will not resolve returns an error, so a run
 // never proceeds against half-met dependencies.
-func resolveProjectVenv(ctx context.Context, dataDir, playbook string) (deps.Venv, error) {
-	if playbook == "" {
+func resolveProjectVenv(ctx context.Context, dataDir, anchor string) (deps.Venv, error) {
+	if anchor == "" {
 		return deps.Venv{}, nil
 	}
-	start := filepath.Dir(playbook)
+	start := filepath.Dir(anchor)
 	manifest, err := deps.DiscoverPython(start)
 	if err != nil {
-		return deps.Venv{}, fmt.Errorf("deps: discover manifest for %s: %w", playbook, err)
+		return deps.Venv{}, fmt.Errorf("deps: discover manifest from %s: %w", start, err)
 	}
 	if !manifest.HasDeps() {
 		return deps.Venv{}, nil
@@ -182,8 +182,8 @@ func ansiblePlaybookPath(argv []string) string {
 	}
 	// An ad-hoc run (`ansible <pattern> ...`) names no playbook: its positionals
 	// are a host pattern and module args, not a file whose directory carries a
-	// Python manifest. Returning "" keeps ad-hoc runs on the image toolchain and
-	// stops a module arg being mistaken for a playbook path.
+	// Python manifest. Returning "" stops a module arg being mistaken for a
+	// playbook path; ansibleVenvAnchor supplies the source checkout for the venv.
 	if filepath.Base(argv[0]) == executor.AnsibleAdhocBinary {
 		return ""
 	}
@@ -192,6 +192,22 @@ func ansiblePlaybookPath(argv []string) string {
 		return ""
 	}
 	return last
+}
+
+// ansibleVenvAnchor returns the path a run's Python manifest discovery starts
+// beside (its directory). A playbook run starts from the playbook; an ad-hoc run
+// names none, so a run from a registered source starts from that source's
+// checkout, which puts it on the same venv toolchain as the source's playbooks.
+// An ad-hoc run with no source has no project to read and stays on the image
+// toolchain.
+func ansibleVenvAnchor(argv []string, dir, source string) string {
+	if len(argv) > 0 && filepath.Base(argv[0]) == executor.AnsibleAdhocBinary {
+		if source == "" || dir == "" {
+			return ""
+		}
+		return filepath.Join(dir, executor.AnsibleAdhocBinary)
+	}
+	return ansiblePlaybookPath(argv)
 }
 
 // applyVenv points ansible options at a resolved venv (Decision 0016): its
