@@ -44,6 +44,7 @@ func (s *Server) registerSourceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /sources/{name}/sync", s.requireAuth(s.handleSourceSync))
 	mux.HandleFunc("POST /sources/{name}/enable", s.requireAuth(s.handleSourceSetEnabled(true)))
 	mux.HandleFunc("POST /sources/{name}/disable", s.requireAuth(s.handleSourceSetEnabled(false)))
+	mux.HandleFunc("POST /sources/{name}/egress", s.requireAuth(s.handleSourceEgress))
 	mux.HandleFunc("POST /sources/{name}/rm", s.requireAuth(s.handleSourceRm))
 }
 
@@ -274,6 +275,62 @@ func (s *Server) handleSourceSetEnabled(enabled bool) http.HandlerFunc {
 		s.log.Info("web: source "+verb, "source", name, "by", ident.token.Name)
 		s.redirectFlash(w, r, "/sources", verb+" "+name)
 	}
+}
+
+// handleSourceEgress sets or clears a source's operator-scoped default egress
+// port set (Decision 0023) — the web face of `exocomp source egress <name>
+// [port...]`. It mirrors handleSourceSetEnabled: operator-gated, no reauth and
+// no confirm_token (it seals nothing and removes nothing). parseFormEgress
+// validates the ports (1..65535; junk refused) so a bad entry re-renders the
+// detail page at 422 with the egress refusal rather than a 500, and an empty
+// field clears the declaration.
+func (s *Server) handleSourceEgress(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	src, err := s.store.SourceByName(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "no source named "+name, http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+
+	ports, err := parseFormEgress(r)
+	if err != nil {
+		s.log.Info("web: source egress refused", "err", err.Error(), "by", ident.token.Name)
+		s.sourceEgressDefaultRefusal(w, r, name, sourceEgressRefusal, r.PostFormValue("egress"))
+		return
+	}
+	if _, err := s.store.SetSourceEgressPorts(r.Context(), src.ID, ports); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
+	if len(ports) == 0 {
+		s.log.Info("web: source egress cleared", "source", name, "by", ident.token.Name)
+		s.redirectFlash(w, r, "/sources/"+name, "cleared egress default for "+name)
+		return
+	}
+	s.log.Info("web: source egress", "source", name, "ports", joinPorts(ports, ","), "by", ident.token.Name)
+	s.redirectFlash(w, r, "/sources/"+name, "set egress default for "+name)
+}
+
+// sourceEgressDefaultRefusal re-renders the source detail page at 422 with the
+// egress-default form's refusal on its field line and the typed value kept — the
+// forms pattern; a refusal never flashes (flash is success-only, write.go).
+func (s *Server) sourceEgressDefaultRefusal(w http.ResponseWriter, r *http.Request, name, msg, typed string) {
+	vm, err := s.sourceDetailVMFor(w, r, name)
+	if err != nil {
+		return
+	}
+	vm.EgressRefusal = msg
+	vm.EgressInput = typed
+	s.render(w, r, http.StatusUnprocessableEntity, sourceDetail(vm))
 }
 
 func (s *Server) handleSourceRm(w http.ResponseWriter, r *http.Request) {
