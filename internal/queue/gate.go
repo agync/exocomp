@@ -30,6 +30,11 @@ func (q *Queue) EnqueueGated(ctx context.Context, spec Spec) (store.Job, error) 
 		}
 	}
 
+	spec, err := q.withSourceEgress(ctx, spec)
+	if err != nil {
+		return store.Job{}, err
+	}
+
 	return q.store.CreateGatedJob(ctx, store.NewJob{
 		Runbook: spec.Runbook,
 		Kind:    spec.Kind,

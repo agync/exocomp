@@ -172,6 +172,40 @@ func WithoutDrainSet() Option {
 	return func(q *Queue) { q.enqueued = nil }
 }
 
+// withSourceEgress unions a named source's persisted default egress set into an
+// ansible spec's declared ports: effective egress is what the run declares plus
+// whatever the operator recorded on the source (Decision 0023). It is applied
+// only at admission because that is the one place a job row is created, so the
+// recorded row is the grant the run actually receives.
+//
+// Only an ansible job that names a source is widened. Shell, tofu, hook, backup,
+// and vendor jobs never are, and a job naming no source keeps exactly its
+// declared set. A named source that no longer exists is not an error and is
+// never substituted for another: a redrive or replay of an old job whose source
+// was deleted must keep working, and that job's row already carries the set
+// merged when it was first admitted.
+func (q *Queue) withSourceEgress(ctx context.Context, spec Spec) (Spec, error) {
+	if spec.Kind != executor.KindAnsible || spec.Source == "" {
+		return spec, nil
+	}
+	src, err := q.store.SourceByName(ctx, spec.Source)
+	if errors.Is(err, store.ErrNotFound) {
+		return spec, nil
+	}
+	if err != nil {
+		return Spec{}, err
+	}
+	merged := make([]int, 0, len(spec.EgressPorts)+len(src.ExtraEgressPorts))
+	merged = append(merged, spec.EgressPorts...)
+	merged = append(merged, src.ExtraEgressPorts...)
+	clean, err := store.NormalizeEgressPorts(merged)
+	if err != nil {
+		return Spec{}, err
+	}
+	spec.EgressPorts = clean
+	return spec, nil
+}
+
 // Enqueue records a job in the queued state. When the spec carries an
 // idempotency key that a job already holds, that job is returned unchanged
 // instead of a second one being created.
@@ -189,6 +223,11 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 		case !errors.Is(err, store.ErrNotFound):
 			return store.Job{}, err
 		}
+	}
+
+	spec, err := q.withSourceEgress(ctx, spec)
+	if err != nil {
+		return store.Job{}, err
 	}
 
 	job, err := q.store.CreateJob(ctx, store.NewJob{
