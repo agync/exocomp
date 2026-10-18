@@ -285,7 +285,7 @@ func TestApprovalsStreamCapReorderUndoesPerToken(t *testing.T) {
 	// Free a's slots; the refused c must then open its full per-token share —
 	// no phantom per-token charge survives the global refusal.
 	closeAll(aOpen)
-	waitStreamAtOrBelow(t, &h.server.approvalStreams, maxApprovalStreams-maxApprovalStreamsPerToken, 3*time.Second)
+	waitStreamAtOrBelow(t, func() int64 { return h.server.approvalStreams.Load() }, maxApprovalStreams-maxApprovalStreamsPerToken, 3*time.Second)
 	cOpen := openNStreams(t, stream(c), maxApprovalStreamsPerToken, "c approvals stream after freeing")
 	defer closeAll(cOpen)
 }

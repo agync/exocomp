@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -134,18 +133,19 @@ func closeAll(rs []*http.Response) {
 	}
 }
 
-// waitStreamAtOrBelow polls the server's global stream counter until it is at
-// or below want, so a test that frees slots by closing bodies does not race
-// the handler's async cleanup on its next attach.
-func waitStreamAtOrBelow(t *testing.T, counter *atomic.Int64, want int64, within time.Duration) {
+// waitStreamAtOrBelow polls a slot counter (read by valueFn) until it is at or
+// below want, so a test that frees slots by closing bodies does not race the
+// handler's async cleanup on its next attach. valueFn is called under whatever
+// lock the counter's owner requires; it must be safe to call repeatedly.
+func waitStreamAtOrBelow(t *testing.T, valueFn func() int64, want int64, within time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(within)
 	for {
-		if counter.Load() <= want {
+		if valueFn() <= want {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("stream counter did not drop to %d (still %d)", want, counter.Load())
+			t.Fatalf("stream counter did not drop to %d (still %d)", want, valueFn())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -249,7 +249,7 @@ func TestJobStreamCapReorderUndoesPerToken(t *testing.T) {
 	// Free a's slots; the refused c must then open its full per-token share —
 	// no phantom per-token charge survives the global refusal.
 	closeAll(aOpen)
-	waitStreamAtOrBelow(t, &h.server.jobStreams, maxJobStreams-maxJobStreamsPerToken, 3*time.Second)
+	waitStreamAtOrBelow(t, func() int64 { return h.server.jobStreams.Load() }, maxJobStreams-maxJobStreamsPerToken, 3*time.Second)
 	cOpen := openNStreams(t, stream(c), maxJobStreamsPerToken, "c job stream after freeing")
 	defer closeAll(cOpen)
 }
@@ -434,7 +434,12 @@ func TestJobStreamPerTokenCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnqueueGated: %v", err)
 	}
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	token := h.mint(t, "laptop", "operator")
+	tokenID, _, err := parseToken(token)
+	if err != nil {
+		t.Fatalf("parseToken: %v", err)
+	}
+	client := login(t, ts.URL, token)
 
 	open := make([]*http.Response, 0, maxJobStreamsPerToken)
 	defer func() {
@@ -466,6 +471,16 @@ func TestJobStreamPerTokenCap(t *testing.T) {
 		t.Fatalf("close stream: %v", err)
 	}
 	open = open[1:]
+	// The slot is released by the handler's deferred decrement, which runs when
+	// the server notices the client left — not synchronously with Body.Close().
+	// Wait for this token's count to drop before re-opening, so the assertion
+	// tests reusability of a freed slot rather than TCP-close latency under a
+	// loaded runner (a slot that never frees fails the wait below).
+	waitStreamAtOrBelow(t, func() int64 {
+		h.server.jobStreamsMu.Lock()
+		defer h.server.jobStreamsMu.Unlock()
+		return int64(h.server.jobStreamsByToken[tokenID])
+	}, int64(len(open)), 5*time.Second)
 	again, err := client.Get(ts.URL + "/jobs/" + itoa64(job.ID) + "/stream")
 	if err != nil {
 		t.Fatalf("re-open after close: %v", err)
