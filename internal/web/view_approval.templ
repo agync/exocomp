@@ -148,6 +148,15 @@ templ approvalSurface(vm approvalVM) {
 						</div>
 					}
 
+					<!-- the released job's effective egress grant, mirroring the
+					     job detail -->
+					if len(vm.EgressPorts) > 0 {
+						<div class="approve-block">
+							<span class="keyword">Egress ports</span>
+							<p class="mono">{ joinPorts(vm.EgressPorts, ", ") }</p>
+						</div>
+					}
+
 					<!-- (3) provenance + standing guardrail as copy -->
 					<div class="approve-block">
 						<span class="keyword">Why this is asking</span>
