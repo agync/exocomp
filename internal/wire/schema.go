@@ -318,9 +318,15 @@ type SourceView struct {
 	Signed      bool   `json:"signed,omitempty"`
 	// Writable reports whether a path source's tree is granted a read+write
 	// working directory. Always false for a git source.
-	Writable  bool   `json:"writable,omitempty"`
-	Enabled   bool   `json:"enabled"`
-	CreatedAt string `json:"created_at,omitempty"`
+	Writable bool `json:"writable,omitempty"`
+	Enabled  bool `json:"enabled"`
+	// ExtraEgressPorts is the operator-set default egress set every ansible run
+	// that names this source inherits, on top of its declared ports (Decision
+	// 0023). It is additive and omitempty, so a source with no default keeps the
+	// pre-existing bytes and the pinned schema_version does not move — the same
+	// rule the earlier progress, privileged, and expires_at additions followed.
+	ExtraEgressPorts []int  `json:"extra_egress_ports,omitempty"`
+	CreatedAt        string `json:"created_at,omitempty"`
 }
 
 // NewSourceList projects sources in store order.
@@ -330,7 +336,8 @@ func NewSourceList(sources []store.Source) []SourceView {
 		out = append(out, SourceView{
 			ID: s.ID, Name: s.Name, Kind: s.Kind, URI: s.URI, Ref: s.Ref,
 			LastSyncSHA: s.LastSyncSHA, Signed: s.Signed, Writable: s.Writable, Enabled: s.Enabled,
-			CreatedAt: rfc3339(s.CreatedAt),
+			ExtraEgressPorts: s.ExtraEgressPorts,
+			CreatedAt:        rfc3339(s.CreatedAt),
 		})
 	}
 	return out

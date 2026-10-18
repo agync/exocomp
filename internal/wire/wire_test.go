@@ -84,6 +84,41 @@ func TestGoldenJobPrivileged(t *testing.T) {
 	}
 }
 
+// TestGoldenSourceEgressDefault pins the additive extra_egress_ports field on a
+// source view: it appears only when the operator set a source-scoped default
+// (Decision 0023) and its absence leaves the pre-existing source bytes
+// unchanged, so the pinned schema_version stays at 1 — the same additive rule
+// the earlier privileged and progress fields followed.
+func TestGoldenSourceEgressDefault(t *testing.T) {
+	src := store.Source{
+		ID:               7,
+		Name:             "tree",
+		Kind:             "path",
+		Enabled:          true,
+		ExtraEgressPorts: []int{8080, 9000},
+		CreatedAt:        at("2026-01-02T03:04:05Z"),
+	}
+	got, err := wire.MarshalSuccess(wire.KindSourceList, wire.NewSourceList([]store.Source{src}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"schema_version":1,"kind":"source.list","data":[{"id":7,"name":"tree","kind":"path","enabled":true,"extra_egress_ports":[8080,9000],"created_at":"2026-01-02T03:04:05Z"}]}` + "\n"
+	if string(got) != want {
+		t.Fatalf("source egress default bytes drift:\n got: %s\nwant: %s", got, want)
+	}
+
+	// A source with no operator default omits the field entirely (omitempty),
+	// so the default posture stays a tiny document.
+	src.ExtraEgressPorts = nil
+	got, err = wire.MarshalSuccess(wire.KindSourceList, wire.NewSourceList([]store.Source{src}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "extra_egress_ports") {
+		t.Fatalf("source without a default must omit extra_egress_ports: %s", got)
+	}
+}
+
 func TestGoldenEmptyList(t *testing.T) {
 	got, err := wire.MarshalSuccess(wire.KindJobList, wire.NewJobList(nil))
 	if err != nil {
