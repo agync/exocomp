@@ -55,6 +55,32 @@ lives in its own subtree of the data volume (e.g. `/var/lib/exocomp/sources/…`
 absolute path source is any tree that is not a parent of the data dir. Put playbooks and
 workspaces in their own directory, not the one holding the database and keys.
 
+## Source-scoped egress default
+
+An ansible run under the enforcing sandbox reaches TCP 22 and whatever ports it declares.
+When a source's runs always need the same extra port — a controller API on 443, a metrics
+endpoint on 9090 — record it on the source instead of repeating it on every run
+([Decision 0023](../decisions/0023-source-egress-defaults.md)):
+
+```
+exocomp source egress homelab 443 9090
+```
+
+`source egress <name> [port...]` sets the source's default, replacing any previous set;
+with no ports it clears the default. The set is validated (1..65535), de-duplicated, and
+sorted. Every ansible run that names the source inherits it at queue admission, unioned
+with the run's own `--egress` grant and the ansible kind's built-in SSH port 22 — the union
+is what the job row records, so the effective grant is what an approver and the job detail
+show.
+
+The default is **operator-set through the daemon only**: nothing a repo declares widens it,
+so a checked-out playbook cannot grant itself a port. It is visible on the source's detail
+page — an **Egress ports** line, and, for an operator, a form POSTing to
+`/sources/{name}/egress` that is the web face of the same verb.
+
+Like every egress grant, it is **a port, not a destination**: the sandbox filters by port,
+so a granted port is reachable to any host, not only the intended one.
+
 ## The credential plane — sealed secrets as run env
 
 A dynamic-inventory plugin or an OpenTofu provider authenticates from environment

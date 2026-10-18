@@ -41,6 +41,14 @@ exocomp playbook run playbooks/tailscale.yml \
 
 The grant is a port, not a destination: Landlock cannot scope it to one host, so `--egress 443` opens 443 to any host the job can reach. Declare only the ports a run genuinely needs, and leave host-level restriction to the network.
 
+A run's effective set is the union of three grants: the ansible kind's built-in SSH port 22, any **operator-set source default**, and whatever that one run declares. The source default is the place for a port every run from that source needs (a controller API over 443, a metrics endpoint), so it is declared once on the source instead of repeated on each run:
+
+```bash
+exocomp source egress homelab 443 9090
+```
+
+`source egress <name> [port...]` records the default, replacing any previous one; with no ports it clears the declaration. It is **operator-set through the daemon only** — a repo can never declare its own widening, so a checked-out playbook cannot grant itself a port. The default is shown on the source's detail page (the Egress ports line and a form for the same verb), and every ansible run that names the source inherits it at queue admission, where the union is recorded on the job row.
+
 A playbook that needs more than a port is the one case for `--privileged`, a per-run opt-out of the kernel sandbox: operator-only, off by default, and audited, so reserve it for work that must run unsandboxed on the controller itself. The product shows it wherever a run is read — the job detail's run card wears an `unsandboxed` chip, the jobs list names it beside the source, the run's log opens with an attributed "run requested UNSANDBOXED" band, and `exocomp doctor` reports how many recent runs ran unsandboxed. When only a remote host needs the elevation (or the egress), prefer reaching that host over SSH so the work happens on the far side and the daemon's sandbox stays on.
 
 ## Live job streaming and execution logs
