@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -82,6 +83,9 @@ func (s *Server) rules(r *http.Request) ([]ruleRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	// One source lookup per distinct source, not per rule: the effective egress
+	// of every playbook rule that names the same source resolves once.
+	defaults := map[string][]int{}
 	out := make([]ruleRow, 0, len(list))
 	for _, rl := range list {
 		row := ruleRow{
@@ -93,8 +97,16 @@ func (s *Server) rules(r *http.Request) ([]ruleRow, error) {
 			Expr:     rl.CELExpr,
 			LastFire: "—",
 		}
-		if rl.ActionKind == store.ActionPlaybook && len(rl.Action.Egress) > 0 {
-			row.Egress = "egress " + joinPorts(rl.Action.Egress, ", ")
+		// The egress guard shows the rule's effective set — what its runs may
+		// actually open — not only what the rule declared.
+		if rl.ActionKind == store.ActionPlaybook {
+			ports, perr := s.ruleEffectiveEgress(r.Context(), rl, defaults)
+			if perr != nil {
+				return nil, perr
+			}
+			if len(ports) > 0 {
+				row.Egress = "egress " + joinPorts(ports, ", ")
+			}
 		}
 		if fire, ferr := s.store.LastRuleFire(r.Context(), rl.ID); ferr == nil {
 			row.LastFire = fire.Ts.Local().Format("15:04:05")
@@ -108,6 +120,41 @@ func (s *Server) rules(r *http.Request) ([]ruleRow, error) {
 		out = append(out, row)
 	}
 	return out, nil
+}
+
+// ruleEffectiveEgress is the port set a rule's runs may open: the rule's
+// declared ports unioned with the default set of the source it names. It
+// mirrors Queue.withSourceEgress — the admission authority this display must
+// match, or the page would understate an unattended run's reach (Decision
+// 0023) — exactly: only a playbook rule with a non-empty Action.Source is
+// widened; the union is additive and de-duplicated; a missing source is a
+// no-op, never an error and never a substitution for another source; a rule
+// that declares nothing keeps exactly the source's default.
+//
+// defaults caches one lookup per distinct source across a page render, and a
+// source that no longer exists caches as nil so a fleet of rules naming it
+// does not repeat the miss.
+func (s *Server) ruleEffectiveEgress(ctx context.Context, rl store.Rule, defaults map[string][]int) ([]int, error) {
+	if rl.ActionKind != store.ActionPlaybook || rl.Action.Source == "" {
+		return rl.Action.Egress, nil
+	}
+	def, seen := defaults[rl.Action.Source]
+	if !seen {
+		src, err := s.store.SourceByName(ctx, rl.Action.Source)
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			def = nil
+		case err != nil:
+			return nil, err
+		default:
+			def = src.ExtraEgressPorts
+		}
+		defaults[rl.Action.Source] = def
+	}
+	merged := make([]int, 0, len(rl.Action.Egress)+len(def))
+	merged = append(merged, rl.Action.Egress...)
+	merged = append(merged, def...)
+	return store.NormalizeEgressPorts(merged)
 }
 
 // ruleActionPhrase renders line two's action the way the design reads it
