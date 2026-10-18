@@ -26,26 +26,22 @@ Common flags:
 - `-e <key=value>`: Pass extra variables. Arguments are passed securely off `argv` to avoid leaking variable values in process tables.
 - `--require-approval`: Require an explicit operator decision before execution starts.
 
-### Control plane egress (`--privileged`)
+### Control plane egress
 
-Under the default `enforcing` sandbox tier, jobs have no network egress beyond local LAN and configured endpoints.
-
-For control plane playbooks that manage cloud or SaaS APIs (such as NextDNS, Tailscale Tailnet, or UniFi controllers), pass the `--privileged` flag to permit external egress:
+Under the default `enforcing` sandbox tier, an ansible run reaches TCP 22 — SSH to inventory hosts — and nothing else. A control plane playbook that talks to an API over HTTPS (NextDNS, a Tailscale tailnet, a UniFi controller) needs port 443, which the run declares with `--egress`:
 
 ```bash
 exocomp playbook run playbooks/tailscale.yml \
   --source homelab \
   --diff \
-  --privileged
+  --egress 443
 ```
 
-`--privileged` is a per-run opt-out of the kernel sandbox, not a default: it is operator-only, off by
-default, and audited. The product shows it wherever a run is read — the job detail's run card wears an
-`unsandboxed` chip, the jobs list names it beside the source, the run's log opens with an attributed
-"run requested UNSANDBOXED" band, and `exocomp doctor` reports how many recent runs ran unsandboxed.
-When only a remote host needs the elevation (or the egress), prefer reaching that host over SSH so the
-work happens on the far side and the daemon's sandbox stays on; reserve `--privileged` for work that
-must run unsandboxed on the controller itself.
+`--egress` names one or more ports — repeatable, or comma-separated — and grants them on top of the built-in SSH port 22. `run --egress` does the same for a handoff, and a playbook rule carries it for every run it triggers (`rule add --action playbook --egress 443`). The declared set is recorded on the job and shown in the run's configuration.
+
+The grant is a port, not a destination: Landlock cannot scope it to one host, so `--egress 443` opens 443 to any host the job can reach. Declare only the ports a run genuinely needs, and leave host-level restriction to the network.
+
+A playbook that needs more than a port is the one case for `--privileged`, a per-run opt-out of the kernel sandbox: operator-only, off by default, and audited, so reserve it for work that must run unsandboxed on the controller itself. The product shows it wherever a run is read — the job detail's run card wears an `unsandboxed` chip, the jobs list names it beside the source, the run's log opens with an attributed "run requested UNSANDBOXED" band, and `exocomp doctor` reports how many recent runs ran unsandboxed. When only a remote host needs the elevation (or the egress), prefer reaching that host over SSH so the work happens on the far side and the daemon's sandbox stays on.
 
 ## Live job streaming and execution logs
 
