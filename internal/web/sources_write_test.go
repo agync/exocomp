@@ -548,12 +548,29 @@ func TestSourceSyncPathRefused(t *testing.T) {
 	}
 }
 
+// gitEnv is a clean environment for the throwaway repos: it deliberately does
+// not inherit the parent's. This repo's own pre-commit hook runs these tests,
+// and a hook's environment carries GIT_DIR/GIT_INDEX_FILE as well as (on git
+// 2.54+) GIT_CONFIG_COUNT/KEY/VALUE seeding core.hooksPath at the outer repo's
+// hooks. Inheriting either makes `git -C <tmp>` act on the outer repo, or shell
+// out to a hook that finds no .pre-commit-config.yaml in the temp tree.
+func gitEnv(home string) []string {
+	return []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + home,
+		"GIT_CONFIG_GLOBAL=" + filepath.Join(home, ".gitconfig"),
+		"GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+	}
+}
+
 func testGitRepo(t *testing.T) (repoPath, headSHA string) {
 	t.Helper()
 	repoPath = t.TempDir()
 	home := t.TempDir()
 	cmd := exec.Command("git", "-C", repoPath, "init", "-b", "main")
-	cmd.Env = append(os.Environ(), "HOME="+home)
+	cmd.Env = gitEnv(home)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
@@ -565,13 +582,13 @@ func testGitRepo(t *testing.T) (repoPath, headSHA string) {
 		{"-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "initial"},
 	} {
 		cmd = exec.Command("git", append([]string{"-C", repoPath}, args...)...)
-		cmd.Env = append(os.Environ(), "HOME="+home)
+		cmd.Env = gitEnv(home)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
 		}
 	}
 	cmd = exec.Command("git", "-C", repoPath, "rev-parse", "HEAD")
-	cmd.Env = append(os.Environ(), "HOME="+home)
+	cmd.Env = gitEnv(home)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git rev-parse: %v: %s", err, out)
