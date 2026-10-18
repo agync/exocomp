@@ -22,7 +22,7 @@ Task-oriented workflows and step-by-step guides for everyday homelab management 
 |---|---|
 | [Quickstart](guide/quickstart.md) | 15-minute quickstart: Quadlet deployment, first-run wizard, and printing the recovery card |
 | [Sources and inventory](guide/sources.md) | Registering Git repositories, local directories, SSH fleet keys, and auto-onboarding hosts |
-| [Ansible automation](guide/ansible.md) | Running playbooks, ad-hoc execution, `--egress` API egress, and `--check` config drift |
+| [Ansible automation](guide/ansible.md) | Running playbooks, ad-hoc execution, `--egress` and source-default API egress, and `--check` config drift |
 | [OpenTofu infrastructure](guide/opentofu.md) | Workspaces, native SQLite HTTP state backend, plan diffs, CEL policies, and sealed outputs |
 | [Provision-to-converge handoffs](guide/handoffs.md) | Chaining OpenTofu apply to Ansible playbook execution in a single atomic ledger workflow |
 | [Secrets and fleet keys](guide/secrets.md) | Age envelope encryption, SOPS integration, run-secret bindings, and zero secret leakage |

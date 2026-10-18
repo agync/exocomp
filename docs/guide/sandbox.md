@@ -49,14 +49,23 @@ A job that declares nothing keeps the default-deny posture.
 
 ## Egress
 
-Network access is scoped by job kind, not by destination:
+Network access is scoped by **port, never by destination**. A run's effective reach is
+additive — the kind's built-in port, plus any operator-set default on the source it names,
+plus whatever the run (or the rule that triggered it) declares:
 
-- Ansible: TCP 22 (SSH to inventory hosts).
-- OpenTofu: TCP 443 plus the loopback state-backend port.
-- `run-cli`: port 443 only when the registration declared `--egress https`.
+- **Ansible:** TCP 22 (SSH to inventory hosts), widened by a run's `--egress` ports, by a
+  playbook rule's declared ports, and by the named source's operator-set default
+  (`exocomp source egress <name> [port...]`), which every ansible run naming that source
+  inherits at queue admission ([Decision 0023](../decisions/0023-source-egress-defaults.md)).
+  The de-duplicated union is what the job row records and what the approval page and the
+  rules page render.
+- **OpenTofu:** TCP 443 plus the loopback state-backend port, widened by a workspace's
+  operator-set default (`exocomp workspace egress <name> <port>...`).
+- **`run-cli`:** port 443 only when the registration declared `--egress https`.
 
-Landlock matches ports, not destinations, so per-destination filtering is not available;
-a fleet degraded to `disabled` enforces no egress limit at all.
+Landlock matches ports, not destinations, so per-destination filtering is not available: a
+granted port is reachable to any host the run can reach. A fleet degraded to `disabled`
+enforces no egress limit at all.
 
 ## The privileged opt-out
 

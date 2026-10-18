@@ -15,11 +15,11 @@ All execution passes through the single audited job queue and runs under the `no
 
 | Guide | Covers |
 |---|---|
-| [Ansible automation](ansible.md) | Running playbooks, ad-hoc commands, host limits, extra vars, tags, and `--check` drift detection |
+| [Ansible automation](ansible.md) | Running playbooks, ad-hoc commands, host limits, extra vars, tags, `--check` drift detection, and `--egress` or source-default egress |
 | [OpenTofu infrastructure](opentofu.md) | Managing workspaces, SQLite HTTP state backend, plan reviews, CEL plan policies, and state version history |
 | [Provision-to-converge handoffs](handoffs.md) | Chaining OpenTofu apply to Ansible playbook execution in a single ledger workflow |
 | [Secrets and fleet keys](secrets.md) | Age envelope encryption, SOPS integration, host identity keys, and sealed run-secret bindings |
-| [Job sandboxing](sandbox.md) | nono tiers, default-deny grants, egress scoping, the `--privileged` opt-out, and operational limits |
+| [Job sandboxing](sandbox.md) | nono tiers, default-deny grants, port-scoped egress (kind, source default, and per-run declaration), the `--privileged` opt-out, and operational limits |
 | [Health checks and probes](checks.md) | Declaring target probes, CIDR network groups, reachability matrix, and check-triggered runs |
 | [Reactive automation](reactive.md) | Webhooks, CEL event rule routing, push alerts, silence windows, and phone approval gates |
 
