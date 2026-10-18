@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -35,7 +36,7 @@ func newSourceCmd() *cobra.Command {
 		Use:   "source",
 		Short: "Register and sync the git repos and paths runs execute from (Decision 0010)",
 	}
-	cmd.AddCommand(newSourceAddCmd(), newSourceListCmd(), newSourceSyncCmd(), newSourceRmCmd())
+	cmd.AddCommand(newSourceAddCmd(), newSourceListCmd(), newSourceSyncCmd(), newSourceRmCmd(), newSourceEgressCmd())
 	return cmd
 }
 
@@ -450,6 +451,72 @@ func runSourceRm(cmd *cobra.Command, name string) error {
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "removed source %q\n", name)
 	return nil
+}
+
+func newSourceEgressCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "egress <name> [port...]",
+		Short: "Declare the default egress ports a source's ansible runs inherit",
+		Long: "Records a default egress set that every ansible run naming this source " +
+			"inherits, unioned with whatever that run declares, replacing any previous " +
+			"declaration. With no ports it clears the declaration. This is a deliberate " +
+			"widening: because the sandbox filters egress by port and not by destination, " +
+			"a granted port reaches any host on that port, not only the intended one. It " +
+			"is the ansible counterpart of `workspace egress` " +
+			"(docs/operations/serve.md).",
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSourceEgress(cmd, args[0], args[1:])
+		},
+	}
+}
+
+func runSourceEgress(cmd *cobra.Command, name string, portArgs []string) (err error) {
+	ports := make([]int, 0, len(portArgs))
+	for _, a := range portArgs {
+		p, perr := strconv.Atoi(a)
+		if perr != nil {
+			return fmt.Errorf("source egress: %q is not a port number", a)
+		}
+		ports = append(ports, p)
+	}
+
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := st.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	ctx := cmd.Context()
+	src, err := st.SourceByName(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("source egress: no source %q", name)
+	}
+	if err != nil {
+		return err
+	}
+
+	updated, err := st.SetSourceEgressPorts(ctx, src.ID, ports)
+	if errors.Is(err, store.ErrInvalidEgressPort) {
+		return fmt.Errorf("source egress: %w", err)
+	}
+	if err != nil {
+		return err
+	}
+
+	if len(updated.ExtraEgressPorts) == 0 {
+		_, err = fmt.Fprintf(cmd.OutOrStdout(),
+			"source %s default egress ports: none (ansible kind default only)\n", updated.Name)
+		return err
+	}
+	_, err = fmt.Fprintf(cmd.OutOrStdout(),
+		"source %s default egress ports: %v (any host on these ports)\n",
+		updated.Name, updated.ExtraEgressPorts)
+	return err
 }
 
 // purgeSourceCachesIfUnreferenced removes a deleted source's dependency caches
