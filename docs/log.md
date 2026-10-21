@@ -8,6 +8,13 @@ Newest first.
 
 ## 2026-10-21
 
+- **Remote identity grants documented.** [The serve page](operations/serve.md) documents
+  `--allow-ssh-identity` and how a `--remote` run names a key on the daemon, [running a
+  playbook](operations/playbook-run.md), [the API page](operations/api.md), [remote
+  access](operations/remote-access.md) and [the sandbox guide](guide/sandbox.md) follow, and
+  [the threat model](security/threat-model.md) records
+  the reach a listed key gives operator-scope tokens.
+
 - **Local-run notice documented.** [Remote access](operations/remote-access.md) shows the
   line a bare `playbook run` or `workspace plan`, `apply` or `destroy` prints when it runs
   locally while a default remote is stored.

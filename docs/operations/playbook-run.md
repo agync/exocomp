@@ -65,7 +65,9 @@ into the tree. Each path is granted as a single file, never a directory, and the
 is per run and empty by default; a run that declares nothing keeps the sandbox's default-deny
 posture. The key file must be named by an absolute (or working-directory-relative) path, and
 `exocomp run --ssh-identity` grants the same files to a lifecycle workflow's play step.
-See [serve.md](serve.md) for the security posture.
+With `--remote` the path is one on the daemon, given absolute, and the daemon grants it only
+when its operator allowed that file with `serve --allow-ssh-identity`.
+See [serve.md](serve.md#read-grants-for-ssh-identity-files) for the security posture.
 
 ## Extra vars, and where their values live
 

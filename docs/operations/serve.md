@@ -36,6 +36,7 @@ WARNING: workspace prod holds a stale state lock (apply by ci@lima since 2026-08
 | `--reload-interval` | `1m` | How often schedules are rebuilt from the database, so `schedule add/enable/disable` reaches a running daemon without a signal. `0` means only `SIGHUP` reloads. |
 | `--sandbox` | `$EXOCOMP_SANDBOX`, else `enforcing` | Job isolation tier: `opportunistic`, `enforcing`, or `disabled`. See below. |
 | `--resolver-allow-domain` | none | An extra package index host the dependency resolvers may reach through the sandbox proxy, repeatable, on top of `pypi.org`, `files.pythonhosted.org` and the Ansible Galaxy hosts. Plain lowercase host names only, no wildcard, no address and no `localhost`. A private or alternate index, or a host named in a collections requirements file, needs it. It applies to the daemon only, and the Galaxy defaults are the API host and the bucket its downloads redirect to. See [job sandboxing](../guide/sandbox.md#egress). |
+| `--allow-ssh-identity` | none | An ssh identity key file a playbook run enqueued with `POST /api/v1/playbooks/run` may ask to read, repeatable. Each names one absolute path to a regular file outside the data dir and outside the paths that unwrap the DEK (the systemd credentials directory, the host-key passphrase file and the transit seal token file), never a directory, and `serve` refuses to start when one does not. A remote run that names any other file is refused. See [read grants for ssh identity files](#read-grants-for-ssh-identity-files). |
 | `--secret-staging` | `auto` | Where a run-secret staged as a file (`bootstrap run --capture-file`) lands: `auto`, `tmpfs`, or `disk`. See below. |
 
 ## Job isolation
@@ -257,6 +258,22 @@ the sandbox opens exactly that file. The declaration is per job and empty by def
 or rule that has declared nothing grants no key outside the checkout — and a relative path is
 refused when declared, because a relative grant would mean "wherever this process happens to
 be" under the sandbox.
+
+A `--remote` run names paths on the daemon's host, which the caller does not control, so
+the daemon grants only files its operator listed with `--allow-ssh-identity` and refuses a
+request naming any other with `400`. A daemon started without the flag, and an `exocomp web`
+process, refuse every remote identity. Each entry must be an absolute path to a regular
+file outside the data dir and outside the systemd credentials directory, the host-key
+passphrase file and the transit seal token file, with symlinks resolved. `serve` checks the list when it starts and again on every
+request, so keep the keys on a read-only mount where nothing in the container can swap
+them. A job already queued keeps the grant it was enqueued with, even after a restart
+without that entry.
+
+```
+exocomp serve --web-addr 0.0.0.0:8642 --allow-ssh-identity /run/keys/fleet/id_ed25519
+exocomp --remote server playbook run site.yml --source infra \
+  --ssh-identity /run/keys/fleet/id_ed25519
+```
 
 The grant passes through the same profile guard every grant does. The guard refuses a path
 that is the data dir or one of its ancestors, or that names one of the daemon's state files:

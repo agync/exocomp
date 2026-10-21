@@ -134,6 +134,8 @@ refused rather than sent:
   on the daemon)
 - `--inventory ./hosts.ini` (name a registered inventory instead)
 - `--extra-var @file` (pass `key=val`, which travels in the request)
+- a relative `--ssh-identity` (give the absolute path of a key the daemon's operator allowed
+  with `serve --allow-ssh-identity`)
 - `workspace apply --plan <path>` (name the saved plan's artifact id)
 - `--wait`, which drives a hooked source's composed workflow — a lifecycle the write API does
   not offer
