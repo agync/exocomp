@@ -28,6 +28,11 @@ Newest first.
   [Containers](operations/containers.md) and [the bill of materials](sbom/bill-of-materials.md)
   list it.
 
+- **Litestream no longer called embedded.** The package tree in
+  [architecture](contribution/architecture.md) described `internal/litestream` as an embedded
+  replication manager, against [Decision 0012](decisions/0012-litestream.md): it generates the
+  sidecar's config and reads its replica, and the process runs beside the daemon.
+
 - **Ping checks on by default in the units.** [Containers](operations/containers.md#ping-checks)
   says the shipped Quadlet and compose units set `ping_group_range` to the image's gid, why
   that value holds under `UserNS=keep-id`, and that `Network=host` drops the line.
