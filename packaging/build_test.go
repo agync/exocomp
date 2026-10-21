@@ -21,7 +21,7 @@ const imageTestEnv = "EXOCOMP_TEST_IMAGE"
 const imageTag = "localhost/exocomp:packaging-test"
 
 // imageBuildTimeout covers a cold build: base images, the uv toolchain, and
-// five pinned downloads.
+// six pinned downloads.
 const imageBuildTimeout = 30 * time.Minute
 
 func requireImageBuild(t *testing.T) {
@@ -87,6 +87,13 @@ func TestImageBuildsWithTheToolchainBakedIn(t *testing.T) {
 		"--entrypoint", "ping", imageTag, "-c", "1", "-W", "2", "127.0.0.1")
 	if err != nil {
 		t.Errorf("unprivileged ping in the image: %v\n%s", err, out)
+	}
+
+	// restore --from-litestream shells the image's litestream.
+	out, err = runWithin(t, time.Minute, "podman", "run", "--rm", "--network", "none",
+		"--entrypoint", "litestream", imageTag, "version")
+	if err != nil {
+		t.Errorf("litestream in the image: %v\n%s", err, out)
 	}
 
 	// The git backup leg writes zstd only when the binary is on the daemon's PATH.

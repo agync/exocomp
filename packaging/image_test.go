@@ -163,6 +163,7 @@ func TestManifestPinsMatchTheContainerfile(t *testing.T) {
 		"age":            "AGE_VERSION",
 		"sops":           "SOPS_VERSION",
 		"nono":           "NONO_VERSION",
+		"litestream":     "LITESTREAM_VERSION",
 	} {
 		if want := containerfileArg(t, dockerfile, arg); pins[field] != want {
 			t.Errorf("MANIFEST.json %q = %q, Containerfile %s = %q", field, pins[field], arg, want)
@@ -208,7 +209,7 @@ func TestEveryFetchedToolIsPinnedByDigest(t *testing.T) {
 	if !strings.Contains(body, "sha256sum -c -") {
 		t.Fatal("the build does not verify what it downloads")
 	}
-	for _, tool := range []string{"tofu", "restic", "age", "sops", "nono"} {
+	for _, tool := range []string{"tofu", "restic", "age", "sops", "nono", "litestream"} {
 		if !strings.Contains(body, "fetch "+tool+" ") {
 			t.Errorf("the build does not fetch %s through the checked path", tool)
 		}
@@ -327,5 +328,19 @@ func TestRuntimeShipsZstd(t *testing.T) {
 
 	if !regexp.MustCompile(`(?s)dnf -y install[^&;]*\bzstd\b`).MatchString(runtime) {
 		t.Error("the runtime stage does not install zstd; the git backup leg would write gzip")
+	}
+}
+
+// TestImageShipsLitestream: `exocomp restore --from-litestream` shells the
+// litestream binary, so the image carries it beside the other pinned tools
+// (Decision 0012).
+func TestImageShipsLitestream(t *testing.T) {
+	body := readPackagingFile(t, "Containerfile")
+
+	if !strings.Contains(body, "tar --no-same-owner -xzf /tmp/litestream.dl -C /out/bin litestream") {
+		t.Error("the tools stage does not install the fetched litestream binary")
+	}
+	if !strings.Contains(body, "COPY --from=tools /out/bin/ /usr/local/bin/") {
+		t.Error("the runtime stage does not copy the pinned tools onto PATH")
 	}
 }
