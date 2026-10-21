@@ -32,8 +32,13 @@ The recovery primitive is deliberately **not** "run the control plane": it is
 the separately versioned `recovery.sh` ([invariant 7](https://github.com/agync/exocomp/blob/main/AGENTS.md)), which
 rebuilds a data dir from a backup with no exocomp code in the path — delegating
 to `exocomp restore` when a binary is present, and running the recovery card's
-hand chain (age → openssl HKDF → restic, sha256-verified) when it is not. Run
-`recovery.sh --help`. It is versioned separately on purpose: the recovery path
+hand chain when it is not: age → openssl HKDF → restic for a restic target, and
+git clone → check the parts manifest and join the `.age.partNN` parts → age →
+zstd or gzip → tar for a git target, sha256-verified either way. The git chain also
+checks the manifest tags under the target's manifest subkey and refuses a snapshot
+without them unless `--allow-unauthenticated` is given. The tags are keyed from the
+branch's own `keyring.age`, so `--keyring` with a copy you trust makes the script refuse
+a branch whose keyring differs. Run `recovery.sh --help`. It is versioned separately on purpose: the recovery path
 must not depend on the thing that broke.
 
 ### Host key at rest

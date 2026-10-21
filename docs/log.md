@@ -18,6 +18,10 @@ Newest first.
   `restore --from-litestream` finds it, and [containers](operations/containers.md), [the bill
   of materials](sbom/bill-of-materials.md) and [the decision index](decisions/index.md) follow.
 
+- **recovery.sh restores a git target by hand.** [Bootstrap](operations/bootstrap.md) says the
+  script's no-binary path now runs the git card's chain with the tag and digest checks
+  `exocomp restore` makes, where it used to try a restic restore against a git uri.
+
 - **zstd in the image documented.** [Disaster recovery](operations/disaster-recovery.md)
   says the git leg compresses with zstd when it is on PATH and with gzip otherwise, and that
   restoring a `.tar.zst` snapshot needs `zstd`, by hand or through `exocomp restore`.
