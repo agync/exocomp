@@ -79,6 +79,15 @@ func TestImageBuildsWithTheToolchainBakedIn(t *testing.T) {
 	if !strings.Contains(report, "tier               local-sandboxed") {
 		t.Errorf("the image does not run jobs sandboxed:\n%s", report)
 	}
+
+	// A ping check needs the image's ping to work as its uid with no
+	// capability, once the namespace's ping_group_range covers that gid.
+	out, err = runWithin(t, time.Minute, "podman", "run", "--rm", "--network", "none",
+		"--sysctl", "net.ipv4.ping_group_range=1000 1000",
+		"--entrypoint", "ping", imageTag, "-c", "1", "-W", "2", "127.0.0.1")
+	if err != nil {
+		t.Errorf("unprivileged ping in the image: %v\n%s", err, out)
+	}
 }
 
 // runWithin runs one command under a deadline and returns its combined output.

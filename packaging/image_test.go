@@ -276,3 +276,19 @@ func TestRuntimeStageKeepsUVPythonDir(t *testing.T) {
 		t.Error("the runtime stage does not stop uv fetching an interpreter on its own (UV_PYTHON_DOWNLOADS=manual)")
 	}
 }
+
+// TestRuntimeShipsPingWithoutRawCapabilities: a ping check shells `ping`, so
+// the runtime stage has to carry one. Fedora's iputils ping uses unprivileged
+// ICMP sockets, but the same package gives arping and clockdiff cap_net_raw,
+// and nothing here runs them, so the build drops both.
+func TestRuntimeShipsPingWithoutRawCapabilities(t *testing.T) {
+	stages := strings.Split(readPackagingFile(t, "Containerfile"), "\nFROM ")
+	runtime := stages[len(stages)-1]
+
+	if !regexp.MustCompile(`(?s)dnf -y install[^&;]*\biputils\b`).MatchString(runtime) {
+		t.Error("the runtime stage does not install iputils; every ping check would report down")
+	}
+	if !strings.Contains(runtime, "rm -f /usr/bin/arping /usr/bin/clockdiff") {
+		t.Error("the runtime stage keeps arping and clockdiff, which carry cap_net_raw")
+	}
+}
