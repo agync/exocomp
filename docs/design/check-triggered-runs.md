@@ -284,7 +284,7 @@ rationale see
 | Kind | Mechanism | Exit/result truth | Presence semantics |
 |---|---|---|---|
 | `tcp` | `net.DialTimeout` on `address:port` | dial succeeds | **Default presence probe.** `:22` answers "the OS is up" without the ICMP privilege story. Works against hosts that block ping. |
-| `ping` | pinned `ping`/`fping` subprocess, exit code only (AGENTS.md 3) | exit 0 | Same as tcp, for hosts that answer ICMP. Rootless constraint: raw ICMP needs `net.ipv4.ping_group_range` or a setuid helper — see §5.4. |
+| `ping` | `ping` subprocess (`iputils` in the image), exit code only (AGENTS.md 3) | exit 0 | Same as tcp, for hosts that answer ICMP. Rootless constraint: unprivileged ICMP needs `net.ipv4.ping_group_range` to cover the daemon's gid. See §5.4. |
 | `http` | `http.Client` with a short timeout | status in range (2xx/3xx) | **Liveness, not location.** The URL decides what is reachable; the body is never read. |
 
 ### 5.2 Transition-only events, with hysteresis and cold-start seeding
@@ -334,9 +334,12 @@ group name, never a prefix literal.
 
 The container image runs no sudo (AGENTS.md 6). `tcp` and `http` need no
 privilege at all — which is why `tcp` is the default presence kind. `ping`
-depends on `ping_group_range` or a setuid `fping` on the host; `exocomp doctor`
-probes it and `check add --kind ping` is refused loudly on a host that cannot
-enforce it, the same assert-don't-assume posture `sandbox.go Probe` holds.
+depends on `ping_group_range` covering the daemon's gid, and the image ships no
+setuid or capability helper for it. `check add --kind ping` runs a loopback ping
+and is refused loudly on a host that cannot send ICMP, the same
+assert-don't-assume posture `sandbox.go Probe` holds.
+[Containers](../operations/containers.md#ping-checks) covers the container's
+network namespace.
 
 `http` records **status only, never the body** (AGENTS.md 4): a health endpoint's
 response is not evidence this code should persist.

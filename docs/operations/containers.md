@@ -29,7 +29,9 @@ The units reference the published ref. To run a local build instead, substitute
 ## What the base image carries
 
 - `exocompd` (the single binary and CLI) and the pinned subprocess tools: `tofu`,
-  `restic`, `age`, `sops`, `nono`, plus `git` and `openssh-clients`.
+  `restic`, `age`, `sops`, `nono`, plus `git`, `openssh-clients` and `ping` from
+  `iputils`. The build drops the package's `arping` and `clockdiff`, which carry
+  `cap_net_raw`, so the image adds no file capability. See [ping checks](#ping-checks).
 - The baked Python + `ansible-core` toolchain, and `uv`/`uvx` pinned by digest
   ([bill of materials](../sbom/bill-of-materials.md)).
 - The toolchain interpreter, a uv-managed install in `/opt/exocomp/python`
@@ -208,6 +210,25 @@ The socket is the cost. Landlock does not mediate a connect to a pathname unix s
 every sandboxed job can then reach the host's resolver, which
 [the threat model](../security/threat-model.md) records. Where that is not acceptable, give
 the inventory an `ansible_host` that is an address.
+
+## Ping checks
+
+`ping` checks and the `ping` verify gates of a workflow run the image's `ping` from the
+daemon, with no capability. The kernel allows that when the network namespace's
+`net.ipv4.ping_group_range` covers the gid the daemon runs as, which `id -g` in the
+container prints. With `Network=host` the host's range applies, and
+systemd's default covers every group. Under the shipped unit's own network namespace podman
+sets the range to `0 0`, so the daemon cannot open an ICMP socket and
+`check add --kind ping` refuses. Widen the range in the unit:
+
+```
+Sysctl="net.ipv4.ping_group_range=<gid> <gid>"
+```
+
+Keep the quotes, or Quadlet splits the value at the space. Compose takes the same key
+under `sysctls:`. The range only applies inside the container's network namespace, and a
+sandboxed job still cannot open an ICMP socket, because nono refuses it whatever the range.
+A `tcp` check needs neither.
 
 ## Ansible's remote temp
 
