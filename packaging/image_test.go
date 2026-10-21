@@ -221,6 +221,25 @@ func TestEveryFetchedToolIsPinnedByDigest(t *testing.T) {
 	}
 }
 
+// TestToolArchivesExtractRootOwned: tar run as root keeps the owner recorded in
+// the archive, so a release tarball built by a different uid leaves its
+// binaries owned by that uid in the image. Every extraction in the tools stage
+// has to drop the recorded owner, so the pinned tools are all root-owned.
+func TestToolArchivesExtractRootOwned(t *testing.T) {
+	body := readPackagingFile(t, "Containerfile")
+
+	extractions := 0
+	for _, m := range regexp.MustCompile(`\btar\s+-[^;]*`).FindAllString(body, -1) {
+		extractions++
+		if !strings.Contains(m, "--no-same-owner") {
+			t.Errorf("tar keeps the archive's owner: %q", m)
+		}
+	}
+	if extractions < 3 {
+		t.Errorf("found %d tar extractions, want at least age, nono and litestream", extractions)
+	}
+}
+
 // TestConstraintsPinTheResolvedSet: `uv tool install` consumes no lockfile, so
 // the committed constraints file is what keeps a transitive dependency from
 // moving between two builds of the same tag (Decision 0006).
