@@ -76,7 +76,7 @@ func TestImageBuildsWithTheToolchainBakedIn(t *testing.T) {
 	// The sandbox tier is the image's default, so the image ships nono and the
 	// probe has to pass inside a rootless container — unprivileged Landlock
 	// self-restriction is exactly what Decision 0005 chose nono for.
-	if !strings.Contains(report, "tier               local-sandboxed") {
+	if !strings.Contains(report, "tier               enforcing") {
 		t.Errorf("the image does not run jobs sandboxed:\n%s", report)
 	}
 
