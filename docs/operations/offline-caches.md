@@ -73,8 +73,8 @@ installs a project's declared deps, and a manifest can steer that — a
 from an untrusted source. So when the sandbox tier is in effect the uv
 invocation is wrapped in the same nono launcher every job runs under
 ([Decision 0005](../decisions/0005-job-sandboxing-nono.md)): uv is granted write on its
-venv and cache, read on its tool tree and the manifest, and HTTPS to fetch
-packages, and is **denied the data dir, `host.key`, `keyring.age`, and the
+venv and cache, read on its tool tree and the manifest, and the package index hosts
+through nono's proxy, and is **denied the data dir, `host.key`, `keyring.age`, and the
 database** by the same profile guard a run's grants pass through. A resolve that
 tries to read a denied path fails closed, leaving no half-built venv. A host
 that cannot enforce the sandbox resolves in the daemon context, loudly, the same

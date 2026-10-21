@@ -88,7 +88,7 @@ execution path, and an inline dial is bounded by the playbook job's own timeout.
 Under the sandbox tier the `ansible-galaxy` invocation runs wrapped in the same
 resolver-sandbox profile uv uses (denied the data dir, keys, and database;
 granted write on the per-source collections dir, read on the requirements and
-tool tree, HTTPS egress) — `ansible-galaxy` and its galaxy-server interaction
+tool tree, the Galaxy hosts through nono's proxy) — `ansible-galaxy` and its galaxy-server interaction
 are as untrusted as a manifest's build backend. Like uv's download cache, the
 galaxy download/temp cache needs an explicit daemon-pre-created, granted write
 path (Landlock grants attach only to existing paths). The cache lives at

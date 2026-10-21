@@ -8,6 +8,14 @@ Newest first.
 
 ## 2026-10-21
 
+- **Resolver egress documented.** [The sandbox guide](guide/sandbox.md) says the
+  dependency resolvers reach only named index hosts through nono's proxy instead of a port
+  grant, [the serve page](operations/serve.md) documents `--resolver-allow-domain` and
+  corrects its claim that nono has no host filtering short of an HTTPS-terminating proxy,
+  and [the threat model](security/threat-model.md) records the egress as an accepted
+  residual. [Decision 0005](decisions/0005-job-sandboxing-nono.md) and [Decision
+  0015](decisions/0015-per-source-collections.md) note the change.
+
 - **Container and scrape-token docs corrected.** [Containers](operations/containers.md)
   now mints the first token with `--userns keep-id`, says that a published port does not
   reach the loopback-only state backend and where config writes have to run, and names the

@@ -100,7 +100,7 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
 
 | id | threat | mitigation in place |
 |---|---|---|
-| T6 | Dependency resolution (`uv pip install`) running in the daemon context, before the job sandbox, lets a poisoned `pyproject.toml`/`requirements.txt` execute with daemon privileges. | The resolver runs under the job sandbox tier: every `uv` invocation is wrapped in the nono launcher, granted its venv cache, the manifest, and HTTPS, and denied the data dir and keys by the profile guard. A manifest whose install step reads a denied path fails closed. |
+| T6 | Dependency resolution (`uv pip install`) running in the daemon context, before the job sandbox, lets a poisoned `pyproject.toml`/`requirements.txt` execute with daemon privileges. | The resolver runs under the job sandbox tier: every `uv` invocation is wrapped in the nono launcher, granted its venv cache, the manifest, and the named index hosts through nono's proxy, and denied the data dir and keys by the profile guard. A manifest whose install step reads a denied path fails closed. |
 | T7 | A `--signed` ref gate falling back to ambient host git config when `allowed_signers` is empty accepts an attacker-signed ref. | `--signed` fails closed with no exocomp-owned allowed-signers and never consults ambient git config; `source add --signed` refuses at add time without `--allowed-signers`/`--signer`; verification is pinned to ssh signature format. |
 | T8 | A pyproject dependency specifier passed as raw argv to `uv` allows flag injection (`--index-url=…`, `-e /etc`). | A specifier beginning with `-` is refused at parse; accepted specifiers reach `uv` only after `--`. |
 | T9 | Git source-sync using trust-on-first-use for the forge host key (the `known_hosts` pin of Decision 0010 never applied) allows a first-sync MITM. | An `ssh://` source pins the forge host key from the recorded `known_host` store: strict verification when the key is recorded, a host-key mismatch fails the sync. |
@@ -117,6 +117,18 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
   host path that does not reach the data dir. Accepted because the source is operator-added,
   the grant is read-only, and the profile guard still denies the data dir and keys; scoping
   local artifacts to the source tree is future hardening.
+- **Resolver egress —** the resolver reaches only the index hosts it names, through nono's
+  proxy, because `uv` does not resolve names through the system resolver and a port grant
+  cannot serve it. Those are `pypi.org`, `files.pythonhosted.org`, the Ansible Galaxy
+  hosts, and any host an operator adds with `serve --resolver-allow-domain`. The proxy
+  relays to a named host on any port and matches names, not addresses, so a host added
+  that resolves to loopback or the LAN reaches those services, and a wildcard, an address
+  and `localhost` are refused. A poisoned build backend can send what it can read to a
+  named host. Raw TCP connections are refused, which `exocomp doctor` asserts in this mode
+  as in the port mode, and the resolvers refuse to run where it fails. The proxy parses
+  the child's HTTP inside the unconfined launcher, a new surface.
+  Accepted because sources are operator-added and the resolver cannot read `exocomp.db` or
+  the keys.
 - **Shared uv cache —** every source's resolver is granted write on one uv cache,
   `cache/python/uv-cache`, and each venv is hardlink-seeded from it (Decision 0011). A
   poisoned manifest's build backend can therefore change cache entries that a later resolve
