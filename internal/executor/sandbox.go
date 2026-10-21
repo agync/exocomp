@@ -216,6 +216,39 @@ func ToolGrants(names ...string) []string {
 	return normalizePaths(out)
 }
 
+// PythonInstallEnv is uv's own variable naming where managed interpreters live;
+// the image bakes the frozen toolchain interpreter there (Decision 0016).
+const PythonInstallEnv = "UV_PYTHON_INSTALL_DIR"
+
+// PythonInstallGrants returns the read grant for the managed-Python install
+// dir, or nil. A `bin` shim's tree is granted by ToolGrants, but the
+// interpreter it points back into is not, so nothing Python can start in the
+// image without this. Every nono grant is recursive, so a dir that is, holds or
+// sits inside the data dir is refused: it would expose job dirs and keys.
+func PythonInstallGrants(dataDir string) []string {
+	dir := os.Getenv(PythonInstallEnv)
+	if !filepath.IsAbs(dir) {
+		return nil
+	}
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return nil
+	}
+	data, err := filepath.Abs(dataDir)
+	if dataDir == "" || err != nil {
+		return nil
+	}
+	if resolved, err := filepath.EvalSymlinks(data); err == nil {
+		data = resolved
+	}
+	if covers(dir, data) || covers(data, dir) {
+		return nil
+	}
+	return normalizePaths([]string{dir})
+}
+
 // toolDirs is the grant set for one resolved executable: its directory, plus
 // the toolchain root above a `bin` when the executable is a script. A compiled
 // binary needs nothing but itself, and widening to the parent of a shared

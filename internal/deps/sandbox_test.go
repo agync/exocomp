@@ -198,3 +198,42 @@ func requireNono(t *testing.T) {
 		t.Skip("nono did not enforce a file-read denial here; skipping the real-sandbox assertion")
 	}
 }
+
+// TestResolverSandboxGrantsThePythonInstallDir: both resolvers start a Python
+// interpreter and uv lists the install dir to find it, so the resolver profile
+// reads it, and drops a value inside the data dir.
+func TestResolverSandboxGrantsThePythonInstallDir(t *testing.T) {
+	python := t.TempDir()
+	data := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(python)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	wrap := func() []string {
+		t.Helper()
+		sb := NewResolverSandbox(ResolverSandboxOptions{Binary: "/opt/nono", DataDir: data, VenvDir: filepath.Join(data, "cache", "v")})
+		full, err := sb.Wrap([]string{"/usr/bin/uv", "venv"})
+		if err != nil {
+			t.Fatalf("wrap: %v", err)
+		}
+		return flagValues(full, "--read")
+	}
+
+	t.Setenv(executor.PythonInstallEnv, python)
+	if !slices.Contains(wrap(), resolved) {
+		t.Errorf("resolver read grants %v lack the Python install dir %s", wrap(), resolved)
+	}
+
+	inside := filepath.Join(data, "run")
+	if err := os.Mkdir(inside, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv(executor.PythonInstallEnv, inside)
+	insideResolved, err := filepath.EvalSymlinks(inside)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if got := wrap(); slices.Contains(got, inside) || slices.Contains(got, insideResolved) {
+		t.Errorf("resolver read grants %v reach inside the data dir via %s", got, inside)
+	}
+}
