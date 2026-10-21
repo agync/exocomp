@@ -8,6 +8,12 @@ Newest first.
 
 ## 2026-10-21
 
+- **Identity grant guard corrected.** [The serve page](operations/serve.md) and
+  [sources](operations/sources.md) said a `--ssh-identity` path covering the data dir is
+  refused. The guard refuses the data dir, its ancestors and its named state files, so a key
+  elsewhere inside the data dir is granted. The serve page now says so and says where to
+  keep a key instead.
+
 - **Remote temp corrected.** [Running a playbook](operations/playbook-run.md) no longer
   says remote temp is redirected into the per-job tree. It says the value the sandbox sets,
   `$HOME/.ansible/tmp`, and where each connection type expands it, and

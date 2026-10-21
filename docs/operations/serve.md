@@ -258,9 +258,17 @@ or rule that has declared nothing grants no key outside the checkout — and a r
 refused when declared, because a relative grant would mean "wherever this process happens to
 be" under the sandbox.
 
-The grant passes through the same profile guard every grant does: a declared identity that
-would cover the data dir (the database, `host.key`, the keyring) is refused when the profile
-is built. And like egress it only means anything under the sandbox: a fleet degraded to the
+The grant passes through the same profile guard every grant does. The guard refuses a path
+that is the data dir or one of its ancestors, or that names one of the daemon's state files:
+`exocomp.db` with its `-wal` and `-shm` files, `host.key`, `keyring.age`, `serve.lock`, and
+`state-backend.addr`, with symlinks resolved on both sides. It checks those files by name,
+so a key stored anywhere else inside the data dir passes it and is granted. Keep identity keys outside the data dir anyway. The
+data dir is the daemon's writable state. A key mounted read-only from elsewhere cannot be
+changed by the daemon or by a job, and the host's configuration management can rotate it
+without touching the daemon's volume. In the container that is a read-only bind mount such
+as `/run/keys/<name>/<file>`, granted with `--ssh-identity /run/keys/<name>/<file>`.
+
+Like egress, the grant only means anything under the sandbox. A fleet degraded to the
 `disabled` tier applies no path grants at all, so the declaration is inert there.
 
 ## Signals
