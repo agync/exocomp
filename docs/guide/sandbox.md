@@ -78,6 +78,12 @@ attributed band, and `jobs list --output json` carries `privileged`. Reaching a 
 SSH is the sandbox-preserving default; reserve `--privileged` for work that must run
 unsandboxed on the controller itself.
 
+It sets the tier of the job alone. The dependency resolvers, the per-source `uv` venv and
+the `ansible-galaxy` collections, follow the sandbox tier of the process that runs the
+job, the daemon's for a queued or remote run, and stay confined under `enforcing` even
+when the job is privileged. `--privileged` with `--remote` is refused, because a remote
+run takes the daemon's tier.
+
 ## Operational limits
 
 - The data directory's `run` subdirectory must stay under 57 bytes: sandboxed jobs
