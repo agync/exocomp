@@ -25,7 +25,7 @@ internal/
 ├── mcp/           Model Context Protocol server for AI coding assistants
 ├── web/           Server-rendered HTML templates (Templ), assets, and tokens
 ├── tui/           Bubble Tea / Lip Gloss terminal interface
-├── litestream/    Embedded SQLite replication and recovery manager
+├── litestream/    Sidecar config generation, replica status, and restore
 ├── naming/        Shared identifier types and constants
 └── wire/          Public API request/response wire types
 ```
