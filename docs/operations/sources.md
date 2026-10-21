@@ -222,7 +222,9 @@ nothing for you.
    `--ssh-identity` is per job and defaults to nothing declared, takes a list,
    names **single files only** (never `~/.ssh` or a directory), requires an
    absolute (or working-directory-relative) path, and rejects a declaration that
-   would cover the data dir. A `--privileged` (unsandboxed) run ignores the
+   covers the data dir or one of its state files. Keep the key outside the data
+   dir, as [the serve page](serve.md#read-grants-for-ssh-identity-files)
+   explains. A `--privileged` (unsandboxed) run ignores the
    grant because the whole box is visible; use that only for trusted work.
 
 4. **Authorize the public half yourself.** Either run a playbook that writes the
