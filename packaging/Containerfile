@@ -88,8 +88,9 @@ FROM ${FEDORA_IMAGE} AS runtime
 
 # iputils is for ping checks, which need no privilege where the network
 # namespace's ping_group_range covers the daemon's gid. Its arping and clockdiff
-# carry cap_net_raw, which nothing here runs, so they are dropped.
-RUN dnf -y install --setopt=install_weak_deps=0 ca-certificates git-core openssh-clients iputils \
+# carry cap_net_raw, which nothing here runs, so they are dropped. zstd
+# compresses the git backup leg's archive, which falls back to gzip without it.
+RUN dnf -y install --setopt=install_weak_deps=0 ca-certificates git-core openssh-clients iputils zstd \
     && rm -f /usr/bin/arping /usr/bin/clockdiff \
     && dnf clean all
 
