@@ -490,3 +490,57 @@ func TestSandboxReadsAnIdentityFileOutsideTheCheckoutOnceGranted(t *testing.T) {
 		t.Errorf("granted read did not return the key bytes: %q", out)
 	}
 }
+
+// TestSandboxedAnsibleMakesRemoteTempOnTheTargetsHome: the remote temp an ssh
+// run creates is a path on the target, so it must not name a directory that
+// exists only on the controller. A stand-in ssh runs every remote command
+// locally under a separate home, and refuses any command naming the
+// controller's job tree, the way a real target fails to create it.
+func TestSandboxedAnsibleMakesRemoteTempOnTheTargetsHome(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible")
+	}
+	requireNono(t)
+	requireAnsible(t)
+
+	data := sandboxDataDir(t)
+	privateRoot := shortPrivateRoot(t)
+	targetHome := t.TempDir()
+	repo := t.TempDir()
+	fakeSSH := filepath.Join(repo, "fake-ssh")
+	script := "#!/bin/sh\n" +
+		"for cmd; do :; done\n" +
+		"case \"$cmd\" in *" + privateRoot + "*)\n" +
+		"  echo \"fake-ssh: $cmd names a controller path\" >&2; exit 1;;\n" +
+		"esac\n" +
+		"HOME=" + targetHome + " exec /bin/sh -c \"$cmd\"\n"
+	if err := os.WriteFile(fakeSSH, []byte(script), 0o700); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	book := writePlaybook(t, repo, "site.yml", `
+- name: ssh-shaped run
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+    ansible_ssh_executable: `+fakeSSH+`
+    ansible_ssh_transfer_method: piped
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  tasks:
+    - name: run a module, which needs a remote temp dir
+      ansible.builtin.command: echo reached
+      changed_when: false
+`)
+
+	res, sink := runAnsibleDriver(t, executor.NewSandboxedAnsible(
+		executor.AnsibleOptions{PrivateDirRoot: privateRoot},
+		executor.SandboxOptions{DataDir: data, WritePaths: []string{targetHome}},
+	), book)
+	if res.ExitCode != 0 {
+		t.Fatalf("ssh-shaped playbook exited %d under the sandbox:\n%s",
+			res.ExitCode, strings.Join(sink.msgs(""), "\n"))
+	}
+	if _, err := os.Stat(filepath.Join(targetHome, ".ansible", "tmp")); err != nil {
+		t.Errorf("remote temp was not made under the target's home: %v", err)
+	}
+}
