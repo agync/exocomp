@@ -8,6 +8,12 @@ Newest first.
 
 ## 2026-10-21
 
+- **Container name resolution documented.** [Containers](operations/containers.md) says
+  why sandboxed jobs cannot resolve host names in the image and how to give them the host
+  resolver, [the threat model](security/threat-model.md) records the unix socket that
+  exposes, and [Decision 0005](decisions/0005-job-sandboxing-nono.md) and [the execution
+  page](architecture/execution.md) note the exception to socket placement.
+
 - **Resolver egress documented.** [The sandbox guide](guide/sandbox.md) says the
   dependency resolvers reach only named index hosts through nono's proxy instead of a port
   grant, [the serve page](operations/serve.md) documents `--resolver-allow-domain` and

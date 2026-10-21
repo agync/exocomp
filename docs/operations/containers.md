@@ -111,6 +111,26 @@ host, `exocomp source add` writes to the host's own data dir and the daemon neve
 A path source has to exist inside the container at the path you register, so mount the
 tree with an extra `Volume=` line.
 
+## Resolving host names under the sandbox
+
+The published image is a Fedora container base with no `/etc/nsswitch.conf`, so glibc
+resolves over UDP DNS, which the job sandbox blocks. A job that dials a host by name, an
+SSH connection to an inventory FQDN above all, cannot resolve it. The dependency resolvers do not rely on this, because their
+proxy resolves names for them, and inventory entries that are addresses need nothing.
+
+A host whose `nsswitch.conf` uses `resolve` reaches systemd-resolved over a unix socket
+instead, and the container can do the same. Mount `/run/systemd/resolve` read-only, and
+mount a file containing `hosts: files resolve [!UNAVAIL=return] dns` at
+`/etc/nsswitch.conf`. The base ships `libnss_resolve`, which a derived image has to keep.
+Raw UDP stays blocked. This is verified on Fedora with SELinux enforcing, where the
+directory mount needs no relabel and the file mount takes `:z`.
+`podman exec exocomp getent hosts <fqdn>` checks the mounts and the configuration.
+
+The socket is the cost. Landlock does not mediate a connect to a pathname unix socket, so
+every sandboxed job can then reach the host's resolver, which
+[the threat model](../security/threat-model.md) records. Where that is not acceptable, give
+the inventory an `ansible_host` that is an address.
+
 ## Add a system package
 
 A playbook that shells out to a binary the base does not carry gets it by
