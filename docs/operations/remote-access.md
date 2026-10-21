@@ -65,6 +65,13 @@ demands the pin exist first). The `hosts.toml` default is consulted **only** onc
 is already active (via `--remote`/`EXOCOMP_REMOTE`); a bare command with neither never gets
 silently redirected off the box, even when a default remote is stored.
 
+A bare `playbook run`, or `workspace plan`, `apply` or `destroy`, runs the job on the machine
+the command runs on. When a default remote is stored it says so on stderr first:
+
+```text
+running on this machine, not on the default remote "server" (pass --remote= to run there)
+```
+
 The bearer token resolves the same way `login` resolves it: `--token` flag → `EXOCOMP_TOKEN`
 → the token `login` stored for that alias. `--token`/`EXOCOMP_TOKEN` let one invocation use a
 different-scoped token than the one pinned, without a re-login.
