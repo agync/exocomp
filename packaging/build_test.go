@@ -88,6 +88,13 @@ func TestImageBuildsWithTheToolchainBakedIn(t *testing.T) {
 	if err != nil {
 		t.Errorf("unprivileged ping in the image: %v\n%s", err, out)
 	}
+
+	// The git backup leg writes zstd only when the binary is on the daemon's PATH.
+	out, err = runWithin(t, time.Minute, "podman", "run", "--rm", "--network", "none",
+		"--entrypoint", "zstd", imageTag, "--version")
+	if err != nil {
+		t.Errorf("zstd in the image: %v\n%s", err, out)
+	}
 }
 
 // runWithin runs one command under a deadline and returns its combined output.

@@ -317,3 +317,15 @@ func TestUnitsLetTheImageGidPing(t *testing.T) {
 		t.Errorf("compose.yaml does not set %s, so a ping check cannot open an ICMP socket", want)
 	}
 }
+
+// TestRuntimeShipsZstd: the git backup leg compresses with zstd when it is on
+// PATH and falls back to gzip, and a restore of a zstd archive needs it. The
+// image carries it so a backup and its restore agree on the format.
+func TestRuntimeShipsZstd(t *testing.T) {
+	stages := strings.Split(readPackagingFile(t, "Containerfile"), "\nFROM ")
+	runtime := stages[len(stages)-1]
+
+	if !regexp.MustCompile(`(?s)dnf -y install[^&;]*\bzstd\b`).MatchString(runtime) {
+		t.Error("the runtime stage does not install zstd; the git backup leg would write gzip")
+	}
+}
