@@ -111,6 +111,84 @@ host, `exocomp source add` writes to the host's own data dir and the daemon neve
 A path source has to exist inside the container at the path you register, so mount the
 tree with an extra `Volume=` line.
 
+A playbook run started from the host and one started in the container both end up on the
+daemon, but they reach it differently.
+
+| | `exocomp --remote <name> playbook run` on the host | `podman exec exocomp exocompd playbook run` |
+|---|---|---|
+| How it reaches the daemon | `/api/v1` over TLS, with a bearer token | the data volume, as the local operator |
+| Paths it names | on the daemon, as a `--source` and a registered inventory, or absolute paths | in the container |
+| Who runs the job | the daemon, and the command follows it | the daemon (`job N queued for the running daemon`), and the command follows it |
+
+A remote run refuses `--privileged`, and
+[remote access](remote-access.md#what-does-not-cross-the-wire) lists the other inputs that do
+not cross the wire. Without `--remote` or `EXOCOMP_REMOTE`, `exocomp playbook run` on the
+host runs the job on the host, against the host's own data dir, and the container never sees
+it. In the container, a command run while the daemon is stopped runs the job itself.
+
+## Managing the host the container runs on
+
+A job reaches the host the container runs on the way it reaches any other target, over SSH.
+A local connection would run `become` inside the sandbox, which denies it, and the container
+does not see the host's files. The host runs sshd, and the container connects to it on
+loopback. That needs `Network=host`, because under the shipped unit's network `127.0.0.1`
+in the container is the container's own loopback. Drop the `PublishPort=` lines and bind
+the web surface to `127.0.0.1:8642` as [reaching the web surface](#reaching-the-web-surface)
+describes, or it listens on every host interface.
+
+- **The key.** Generate a key pair for the daemon on the host, outside the data volume, and
+  authorize its public half for the target user, both from configuration management. The
+  private key reaches the container through a read-only bind mount, and each run is granted
+  it as a single file ([read grants for ssh identity files](serve.md#read-grants-for-ssh-identity-files)).
+  Keep it outside the data dir.
+
+  ```ini
+  # exocomp.container
+  Volume=/path/to/keys/self:/run/keys/self:ro
+  ```
+
+  On an SELinux host the directory also needs a label the container can read, which `z`
+  or `Z` in the mount options sets. `Z` keeps it private to this container, as the unit
+  does for the host key credential.
+- **The restriction.** The authorized key accepts loopback sources only, so a copy of it
+  used from another machine is refused:
+
+  ```text
+  from="127.0.0.1,::1" ssh-ed25519 AAAA... exocomp@host-a
+  ```
+
+  With `Network=host` the container's connection reaches sshd from loopback, so this
+  matches.
+- **The inventory and the run.** The host is an ssh target on loopback, and `become` runs on
+  the far side of the connection, outside the sandbox:
+
+  ```yaml
+  host-a:
+    ansible_host: 127.0.0.1
+    ansible_user: user-a
+    ansible_ssh_private_key_file: /run/keys/self/id_ed25519
+  ```
+
+  ```sh
+  podman exec exocomp exocompd playbook run site.yml --source infra --limit host-a \
+    --ssh-identity /run/keys/self/id_ed25519
+  ```
+
+  Each job starts with a fresh home, so ssh has no `known_hosts` of its own. Supply the
+  host's key from the checkout through the inventory.
+
+### Moving the daemon to another host
+
+1. Generate the new host's key and authorize it, loopback only, on the new host's sshd,
+   mounted into the container as above.
+2. Move the daemon and its data volume ([cold-standby failover](failover.md) covers a
+   replicated store).
+3. Run a playbook from the new host against itself, then against every other target.
+4. Revoke the old host's key on the old host.
+
+If the daemon still manages the old host, it now reaches it over the network like any other
+target, with a key whose authorization is not limited to loopback.
+
 ## Resolving host names under the sandbox
 
 The published image is a Fedora container base with no `/etc/nsswitch.conf`, so glibc

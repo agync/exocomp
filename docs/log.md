@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-10-21
 
+- **Container host management documented.** [Containers](operations/containers.md) says how
+  a run started from the host differs from one started in the container, how the daemon
+  manages the host it runs on through a loopback sshd and a key mounted read-only outside the
+  data dir, and the order for moving the daemon to another host.
+
 - **Remote identity grants documented.** [The serve page](operations/serve.md) documents
   `--allow-ssh-identity` and how a `--remote` run names a key on the daemon, [running a
   playbook](operations/playbook-run.md), [the API page](operations/api.md), [remote
