@@ -96,6 +96,19 @@ func TestImageBuildsWithTheToolchainBakedIn(t *testing.T) {
 		t.Errorf("litestream in the image: %v\n%s", err, out)
 	}
 
+	// Every pinned tool is root-owned, whatever uid the release archive recorded.
+	out, err = runWithin(t, time.Minute, "podman", "run", "--rm", "--network", "none",
+		"--entrypoint", "stat", imageTag, "-c", "%u %n",
+		"/usr/local/bin/age", "/usr/local/bin/age-keygen", "/usr/local/bin/nono")
+	if err != nil {
+		t.Errorf("stat the pinned tools: %v\n%s", err, out)
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		if !strings.HasPrefix(line, "0 ") {
+			t.Errorf("a pinned tool is not root-owned: %q", line)
+		}
+	}
+
 	// The git backup leg writes zstd only when the binary is on the daemon's PATH.
 	out, err = runWithin(t, time.Minute, "podman", "run", "--rm", "--network", "none",
 		"--entrypoint", "zstd", imageTag, "--version")

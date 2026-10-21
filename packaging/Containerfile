@@ -50,13 +50,13 @@ RUN set -eu; \
     fetch restic "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_${TARGETARCH}.bz2"; \
     bunzip2 -c /tmp/restic.dl > /out/bin/restic; \
     fetch age "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-${TARGETARCH}.tar.gz"; \
-    tar -xzf /tmp/age.dl -C /tmp age/age age/age-keygen; \
+    tar --no-same-owner -xzf /tmp/age.dl -C /tmp age/age age/age-keygen; \
     mv /tmp/age/age /tmp/age/age-keygen /out/bin/; \
     fetch sops "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.${TARGETARCH}"; \
     cp /tmp/sops.dl /out/bin/sops; \
     case "$TARGETARCH" in amd64) nono_arch=x86_64 ;; arm64) nono_arch=aarch64 ;; *) exit 1 ;; esac; \
     fetch nono "https://github.com/nolabs-ai/nono/releases/download/v${NONO_VERSION}/nono-v${NONO_VERSION}-${nono_arch}-unknown-linux-gnu.tar.gz"; \
-    tar -xzf /tmp/nono.dl -C /out/bin nono; \
+    tar --no-same-owner -xzf /tmp/nono.dl -C /out/bin nono; \
     case "$TARGETARCH" in amd64) litestream_arch=x86_64 ;; arm64) litestream_arch=arm64 ;; *) exit 1 ;; esac; \
     fetch litestream "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-${litestream_arch}.tar.gz"; \
     tar --no-same-owner -xzf /tmp/litestream.dl -C /out/bin litestream; \
