@@ -64,32 +64,52 @@ tmpfs mounts") and the container will not start; staged secret material lives in
 **no `[Service] Type=`** — the generated unit is `Type=notify` by default and
 conmon supplies `READY=1`, so it works without `exocompd` calling `sd_notify`.
 
-Two Quadlet constraints the unit keeps but no longer spells out in comments: it
-sets **no `Tmpfs=`** on the data dir — under the rootless `UserNS=keep-id`
-posture podman rejects one ("the 'noswap' option is only allowed with rootful
-tmpfs mounts") and the container will not start; staged secret material lives in
-`/dev/shm`, the RAM-backed tmpfs every rootless container has anyway. And it sets
-**no `[Service] Type=`** — the generated unit is `Type=notify` by default and
-conmon supplies `READY=1`, so it works without `exocompd` calling `sd_notify`.
-
 ## Reaching the web surface
 
-Both units publish the web surface on `127.0.0.1:8642` (token-gated TLS) and the tofu
-state backend on `127.0.0.1:8643` (bearer-gated), and nothing else. The web listener
+Both units publish the web surface on `127.0.0.1:8642` (token-gated TLS) and map the
+state backend's `127.0.0.1:8643` (bearer-gated), and nothing else. That mapping does not
+reach the backend, as described below. The web listener
 needs a token before it starts: `serve` refuses a non-loopback bind while no token is
 active ([Decision 0009](../decisions/0009-lan-access-tokens.md)), and a unit that bound
 anyway would crash-loop under `Restart=always`. Mint the first one against the volume,
 before the unit starts:
 
 ```sh
-podman run --rm -v systemd-exocomp:/var/lib/exocomp \
+podman run --rm --userns keep-id -v systemd-exocomp:/var/lib/exocomp \
   ghcr.io/agync/exocomp:latest --no-input token new web
 ```
 
-The volume name is the generated one for the Quadlet; compose prefixes its own
-(`exocomp-state`). Inside the container the listener has to bind `0.0.0.0` to be
-reachable through the published port, which is why `Exec=serve --web-addr 0.0.0.0:8642`
-differs from the host service's loopback bind in the quickstart.
+The volume name is the generated one for the Quadlet, created when
+`exocomp-volume.service` starts. Compose prefixes its own (`exocomp-state`). The unit runs
+with `UserNS=keep-id`, so every command that writes to the volume has to as well. A volume
+first written without it belongs to a different user, and `serve` then fails with
+`open /var/lib/exocomp/serve.lock: permission denied`.
+
+Inside the container the listener has to bind `0.0.0.0` to be reachable through the
+published port, which is why `Exec=serve --web-addr 0.0.0.0:8642` differs from the host
+service's loopback bind in the quickstart.
+
+The state backend and `/metrics` on `:8643` bind the container's own loopback, which a
+published port does not reach. Under rootless podman 5.8 with pasta the connection to
+`127.0.0.1:8643` on the host is accepted and then reset. Reach them from inside the
+container, or run the container with `Network=host`. The host's loopback is then the
+container's. Drop the `PublishPort=` lines and bind the web surface to `127.0.0.1:8642`
+in the `Exec=` line, as the host service does, because `0.0.0.0` would then be every
+host interface.
+
+## Running commands against the container
+
+The image carries the binary as `exocompd`, with the whole CLI behind it:
+`podman exec exocomp exocompd doctor`.
+
+Reads and enqueues work from the host through a remote (`exocomp --remote <name> jobs list`,
+`playbook run`, `drain`). `drain` needs the remote named, and `exocomp login` pins it
+([remote access](remote-access.md)). Config writes stay local
+([remote access](remote-access.md)), and local means the data volume. Run them in the
+container: `podman exec exocomp exocompd source add homelab --path /srv/homelab`. On the
+host, `exocomp source add` writes to the host's own data dir and the daemon never sees it.
+A path source has to exist inside the container at the path you register, so mount the
+tree with an extra `Volume=` line.
 
 ## Add a system package
 
