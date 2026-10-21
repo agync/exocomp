@@ -117,6 +117,13 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
   host path that does not reach the data dir. Accepted because the source is operator-added,
   the grant is read-only, and the profile guard still denies the data dir and keys; scoping
   local artifacts to the source tree is future hardening.
+- **Shared uv cache —** every source's resolver is granted write on one uv cache,
+  `cache/python/uv-cache`, and each venv is hardlink-seeded from it (Decision 0011). A
+  poisoned manifest's build backend can therefore change cache entries that a later resolve
+  of another source installs from, and the files already hardlinked into other sources'
+  venvs, since hardlinks share inodes. Accepted because sources are operator-added and the
+  grant never reaches `exocomp.db` or the keys. A cache per source, at the cost of
+  downloading shared packages again, is the hardening.
 - **Unsigned path sources —** unsigned is the default; path sources have no signature gate.
   Accepted for now with the trust posture documented; a signed-source opt-in for local trees is
   future hardening.
