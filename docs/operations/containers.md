@@ -32,6 +32,14 @@ The units reference the published ref. To run a local build instead, substitute
   `restic`, `age`, `sops`, `nono`, plus `git` and `openssh-clients`.
 - The baked Python + `ansible-core` toolchain, and `uv`/`uvx` pinned by digest
   ([bill of materials](../sbom/bill-of-materials.md)).
+- The toolchain interpreter, a uv-managed install in `/opt/exocomp/python`
+  (`UV_PYTHON_INSTALL_DIR`, with `UV_PYTHON_DOWNLOADS=manual`, so only an explicit
+  `uv python install` fetches one). The job and resolver sandboxes grant that directory
+  read-only, so a per-source venv and the shared toolchain start under `enforcing`.
+  The grant follows the variable and is dropped when the directory is inside the data
+  dir. A derived image that moves the interpreter must change the variable with it, and
+  an interpreter that the Decision 0006 escape hatch installs elsewhere is not readable
+  by jobs, so reuse the image's. `exocomp doctor` names the grant under `sandbox:`.
 - Contract to preserve when inheriting: `USER 1000:1000`, data volume
   `/var/lib/exocomp`, `XDG_DATA_HOME=/var/lib`, the toolchain on `PATH`,
   `ENTRYPOINT`/`CMD` unchanged.

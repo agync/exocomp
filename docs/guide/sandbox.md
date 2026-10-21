@@ -28,7 +28,8 @@ the fleet's jobs unsandboxed. `opportunistic` is the opt-in that accepts the deg
 ## What a job can and cannot touch
 
 Under `enforcing`, each job gets its own private directory (its `HOME`, `TMPDIR`, and
-scratch space) and may read its repo checkout, the tool tree, provider and collection
+scratch space) and may read its repo checkout, the tool tree, the managed-Python install
+dir (`UV_PYTHON_INSTALL_DIR`, when set and outside the data dir), provider and collection
 caches, and the paths its argv names. It cannot read `exocomp.db`, `host.key`,
 `keyring.age`, `serve.lock`, other jobs' private directories, or any local socket —
 including the exocomp API socket and any podman socket.
