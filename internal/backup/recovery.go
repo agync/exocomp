@@ -41,13 +41,17 @@ func renderRecovery(t Target, recipients []secrets.Recipient, now time.Time, ima
 
 	b.WriteString("## Recover by hand\n\n")
 	b.WriteString("```sh\n")
-	b.WriteString("age -d -i recovery.key keyring.age > dek.bin\n")
 	if t.Kind == KindGit {
 		fmt.Fprintf(&b, "git clone --branch backup %s snapshots\n", t.URI)
-		b.WriteString("age -d -i recovery.key snapshots/snapshot-*.age > snapshot.tar.zst\n")
+		// The leg chunks every snapshot into <name>.age.partNN, and the parts
+		// concatenate back into the one age file. The part glob stops at a digit
+		// so it skips the .age.parts.json manifest beside them.
+		b.WriteString("cat snapshots/snapshot-*.age.part[0-9]* | age -d -i recovery.key > snapshot.tar.zst\n")
 		b.WriteString("zstd -d -c snapshot.tar.zst | tar -x -C /srv/exocomp\n")
-		b.WriteString("# gzip archives: gzip -dc snapshot.tar.gz | tar -x -C /srv/exocomp\n")
+		b.WriteString("# parts named snapshot-*.tar.gz.age.part* hold gzip, not zstd: write the age output to\n")
+		b.WriteString("# snapshot.tar.gz instead, then run gzip -dc snapshot.tar.gz | tar -x -C /srv/exocomp\n")
 	} else {
+		b.WriteString("age -d -i recovery.key keyring.age > dek.bin\n")
 		b.WriteString("hex() { od -An -tx1 -v | tr -d ' \\n'; }\n")
 		b.WriteString("openssl kdf -keylen 32 -kdfopt digest:SHA256 \\\n")
 		b.WriteString("  -kdfopt \"hexkey:$(hex < dek.bin)\" \\\n")
