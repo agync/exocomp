@@ -31,6 +31,13 @@ func requireTools(t *testing.T, names ...string) {
 // returns the repository path and the recovery identity file.
 func backupFixture(t *testing.T) (repo, identity string) {
 	t.Helper()
+	return backupFixtureFor(t, backup.KindResticLocal)
+}
+
+// backupFixtureFor does the same for either kind of target: a git target is a
+// local bare repository.
+func backupFixtureFor(t *testing.T, kind string) (repo, identity string) {
+	t.Helper()
 
 	dataDir := filepath.Join(t.TempDir(), "data")
 	env, kit, err := secrets.Init(dataDir, nil)
@@ -62,8 +69,12 @@ func backupFixture(t *testing.T) (repo, identity string) {
 	}
 
 	repo = filepath.Join(t.TempDir(), "repo")
+	if kind == backup.KindGit {
+		repo += ".git"
+		runGit(t, "", "init", "--bare", "--quiet", repo)
+	}
 	row, err := st.CreateBackupTarget(t.Context(), store.BackupTarget{
-		Name: "nas", Kind: backup.KindResticLocal, URI: repo, Enabled: true,
+		Name: "nas", Kind: kind, URI: repo, Enabled: true,
 	})
 	if err != nil {
 		t.Fatalf("create target: %v", err)
@@ -80,6 +91,26 @@ func backupFixture(t *testing.T) (repo, identity string) {
 		t.Fatalf("backup leg failed: %v", err)
 	}
 	return repo, identity
+}
+
+// runGit runs git away from the operator's configuration, in dir when given.
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + t.TempDir(),
+		"GIT_CONFIG_GLOBAL=" + os.DevNull,
+		"GIT_CONFIG_SYSTEM=" + os.DevNull,
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@invalid",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@invalid",
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // runRecovery runs recovery.sh with no exocomp binary reachable: neither
