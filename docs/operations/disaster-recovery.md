@@ -314,6 +314,9 @@ exocomp restore --from-litestream \
   --replica <replica url>          # omitted: read from the litestream.replica_url setting
 ```
 
+The command shells `litestream restore`. The image carries the binary, and a host install
+outside the image needs it on PATH or the command refuses.
+
 The order is load-bearing. Litestream recovers the **database only**, so `--from-litestream`
 requires a data dir that already holds `keyring.age` — the keyring is what opens the database's
 sealed rows. Onto an empty dir it refuses and points you back at the restic restore. Because a

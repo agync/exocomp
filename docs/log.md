@@ -8,6 +8,12 @@ Newest first.
 
 ## 2026-10-22
 
+- **Litestream in the image.** [Decision 0012](decisions/0012-litestream.md) gains an
+  addendum for shipping the binary while the sidecar stays the operator's to run.
+  [Disaster recovery](operations/disaster-recovery.md#fast-rpo-restore-litestream) says where
+  `restore --from-litestream` finds it, and [containers](operations/containers.md), [the bill
+  of materials](sbom/bill-of-materials.md) and [the decision index](decisions/index.md) follow.
+
 - **zstd in the image documented.** [Disaster recovery](operations/disaster-recovery.md)
   says the git leg compresses with zstd when it is on PATH and with gzip otherwise, and that
   restoring a `.tar.zst` snapshot needs `zstd`, by hand or through `exocomp restore`.

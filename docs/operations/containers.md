@@ -29,9 +29,10 @@ The units reference the published ref. To run a local build instead, substitute
 ## What the base image carries
 
 - `exocompd` (the single binary and CLI) and the pinned subprocess tools: `tofu`,
-  `restic`, `age`, `sops`, `nono`, plus `git`, `openssh-clients`, `zstd` for the git
-  backup leg ([disaster recovery](disaster-recovery.md#three-legs-independently)) and `ping`
-  from `iputils`. The build drops the package's `arping` and `clockdiff`, which carry
+  `restic`, `age`, `sops`, `nono`, `litestream`
+  ([Decision 0012](../decisions/0012-litestream.md)), plus `git`, `openssh-clients`, `zstd`
+  for the git backup leg ([disaster recovery](disaster-recovery.md#three-legs-independently))
+  and `ping` from `iputils`. The build drops the package's `arping` and `clockdiff`, which carry
   `cap_net_raw`, so the image adds no file capability. See [ping checks](#ping-checks).
 - The baked Python + `ansible-core` toolchain, and `uv`/`uvx` pinned by digest
   ([bill of materials](../sbom/bill-of-materials.md)).

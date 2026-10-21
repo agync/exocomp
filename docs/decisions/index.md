@@ -17,7 +17,7 @@ of fact land in [the evolution log](../log.md).
 | [0009](0009-lan-access-tokens.md) | LAN listeners require locally-minted bearer tokens; TLS by default | Accepted |
 | [0010](0010-source-and-credential-model.md) | Git-centric source model; deploy/fleet keys; state-only vs run-in-server workspaces | Accepted |
 | [0011](0011-project-dependency-resolution.md) | Project deps from root requirements.txt/pyproject.toml, uv-resolved into hash-gated caches; uv ships at runtime | Accepted |
-| [0012](0012-litestream.md) | Litestream as an optional fast-RPO sidecar replicating exocomp.db's WAL; restic stays authoritative; unencrypted-remote refused without ack; sidecar not embedded | Accepted |
+| [0012](0012-litestream.md) | Litestream as an optional fast-RPO sidecar replicating exocomp.db's WAL; restic stays authoritative; unencrypted-remote refused without ack; sidecar not embedded, and the image ships the binary | Accepted |
 | [0013](0013-openbao-transit-seal.md) | OpenBao Transit as an optional additive seal for the DEK (auto-unseal); keyring.age recovery preserved; unreachable is an explicit error, never silent fallback | Accepted |
 | [0014](0014-agent-facing-surface.md) | Agent-facing surface: one core, three thin faces (CLI --output json, HTTP /api/v1, MCP) sharing Decision 0009 auth, the one queue, and the internal/wire envelope contract | Accepted |
 | [0015](0015-per-source-collections.md) | Ansible collections go per-source: content-hash-keyed cache dir, resolved at claim time, GC'd with the source lifecycle; Decision 0011's shared collections decision superseded | Accepted |
