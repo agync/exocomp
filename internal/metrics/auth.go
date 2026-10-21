@@ -21,9 +21,9 @@ type Deriver interface {
 }
 
 // ScrapeToken returns the bearer that authenticates a metrics scrape. Configure
-// Prometheus with it (an `authorization` credential), or read it from `exocomp
-// doctor`. It is base64 of the 32-byte subkey — the same shape the state
-// backend's token takes.
+// Prometheus with it (an `authorization` credential). No command prints it, so
+// docs/operations/notifications.md derives it by hand. It is base64 of the
+// 32-byte subkey — the same shape the state backend's token takes.
 func ScrapeToken(d Deriver) string {
 	return base64.StdEncoding.EncodeToString(d.Derive(ScrapePurpose, ""))
 }
