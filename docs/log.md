@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-21
+
+- **Container and scrape-token docs corrected.** [Containers](operations/containers.md)
+  now mints the first token with `--userns keep-id`, says that a published port does not
+  reach the loopback-only state backend and where config writes have to run, and names the
+  Quadlet's generated volume. [Notifications](operations/notifications.md) stops pointing
+  at `doctor` for the scrape token and gives the hand derivation. [The sandbox
+  guide](guide/sandbox.md) says the resolvers ignore `--privileged`, and [the threat
+  model](security/threat-model.md) records the shared uv cache as an accepted residual.
+
 ## 2026-10-18
 
 - **Effective-egress surfaces completed and the docs corrected.** The rules page now
