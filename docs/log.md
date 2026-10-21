@@ -8,6 +8,10 @@ Newest first.
 
 ## 2026-10-22
 
+- **Git recovery card commands corrected.** [Disaster recovery](operations/disaster-recovery.md#the-recovery-card)
+  says a git target's card concatenates the `.age.partNN` parts before `age -d`, because the
+  leg never writes a bare `.age` snapshot, and the card no longer unwraps a DEK it does not use.
+
 - **Litestream in the image.** [Decision 0012](decisions/0012-litestream.md) gains an
   addendum for shipping the binary while the sidecar stays the operator's to run.
   [Disaster recovery](operations/disaster-recovery.md#fast-rpo-restore-litestream) says where

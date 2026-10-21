@@ -233,9 +233,10 @@ host reached only over the network, for instance.
 
 The card is the manual path: the same chain with no exocomp binary anywhere in it, using
 only `age`, `openssl`, and `restic`. A git target's card uses `git`, `age` and `zstd`
-instead, or `gzip` for a `.tar.gz` snapshot. `exocomp restore` from a git target also
-shells out to `zstd` for a `.tar.zst` snapshot and refuses when it is not on PATH, so a
-recovery host without the image needs `zstd` installed.
+instead, or `gzip` for a `.tar.gz` snapshot. It concatenates the `snapshot-*.age.partNN`
+parts in order and decrypts the result, as the leg wrote them. `exocomp restore` from a git
+target also shells out to `zstd` for a `.tar.zst` snapshot and refuses when it is not on
+PATH, so a recovery host without the image needs `zstd` installed.
 
 **The card's literal command text is a build artifact, not documentation.** It is rendered
 by the kit renderer, and the exact rendered text is **executed in CI** on a clean image
