@@ -47,6 +47,10 @@ filesystem:
 Network is scoped per runbook kind: Ansible gets SSH to inventory hosts; OpenTofu gets
 provider endpoints plus the `127.0.0.1` state backend.
 
+Amended 2026-10-21: the dependency resolvers reach named package index hosts through
+nono's filtering proxy instead of a port grant, because `uv` does not resolve names
+through the system resolver. See [job sandboxing](../guide/sandbox.md#egress).
+
 Version floor **≥ 0.55.0**, sha256-pinned like restic.
 
 ## Consequences

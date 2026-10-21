@@ -98,8 +98,9 @@ above.
 Network is scoped per kind: ansible gets TCP 22, tofu gets TCP 443 plus the loopback state
 backend's port. **Scoped by port, not by destination**:
 Landlock's network rules match the port alone, and the only per-destination filtering
-available routes traffic through an HTTPS-terminating proxy, which is unusable for SSH and
-wrong for provider signature verification.
+available is a name-matching proxy that relays to a named host on any port. The
+dependency resolvers use it, with named index hosts, because `uv` does not resolve names
+through the system resolver. Ansible and tofu stay on port grants.
 
 `exocomp doctor` reports the launcher version against the floor, the kernel's Landlock ABI
 (network rules need ABI v4+, kernel ≥ 6.7), the tier in effect, and what the startup probe

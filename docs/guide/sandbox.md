@@ -50,7 +50,8 @@ A job that declares nothing keeps the default-deny posture.
 
 ## Egress
 
-Network access is scoped by **port, never by destination**. A run's effective reach is
+A job's network access is scoped by **port, never by destination**. The dependency
+resolvers are the one exception, below. A run's effective reach is
 additive — the kind's built-in port, plus any operator-set default on the source it names,
 plus whatever the run (or the rule that triggered it) declares:
 
@@ -63,9 +64,20 @@ plus whatever the run (or the rule that triggered it) declares:
 - **OpenTofu:** TCP 443 plus the loopback state-backend port, widened by a workspace's
   operator-set default (`exocomp workspace egress <name> <port>...`).
 - **`run-cli`:** port 443 only when the registration declared `--egress https`.
+- **Dependency resolvers (`uv`, `ansible-galaxy`):** named hosts only, through nono's
+  proxy and not a port grant. `uv` gets `pypi.org` and `files.pythonhosted.org`,
+  `ansible-galaxy` gets `galaxy.ansible.com` and its download bucket, and
+  `serve --resolver-allow-domain <host>` (repeatable) adds more, for a private or alternate
+  index or a host named in a collections requirements file (a `type: git` or URL entry, or
+  a non-default `server`). The flag configures the daemon, so a daemonless `playbook run`
+  uses the defaults. `uv` does its own name lookup, which the sandbox blocks, and the
+  proxy resolves names for it. A wildcard is refused: the proxy matches names, so a name
+  that resolves to loopback would reach the daemon's own listeners. Raw TCP stays blocked.
+  `exocomp doctor` asserts that under `proxy mode`, and where it fails the resolvers
+  refuse to run while every other job stays sandboxed.
 
-Landlock matches ports, not destinations, so per-destination filtering is not available: a
-granted port is reachable to any host the run can reach. A fleet degraded to `disabled`
+Landlock matches ports, not destinations, so a granted port is reachable to any host the
+run can reach. Only the resolvers' proxy filters by host. A fleet degraded to `disabled`
 enforces no egress limit at all.
 
 ## The privileged opt-out

@@ -35,6 +35,7 @@ WARNING: workspace prod holds a stale state lock (apply by ci@lima since 2026-08
 | `--drain-grace` | `30s` | How long jobs already running may finish after a signal before they are cancelled. Generous on purpose: a backup leg writes its own `backup_run` row at the end. |
 | `--reload-interval` | `1m` | How often schedules are rebuilt from the database, so `schedule add/enable/disable` reaches a running daemon without a signal. `0` means only `SIGHUP` reloads. |
 | `--sandbox` | `$EXOCOMP_SANDBOX`, else `enforcing` | Job isolation tier: `opportunistic`, `enforcing`, or `disabled`. See below. |
+| `--resolver-allow-domain` | none | An extra package index host the dependency resolvers may reach through the sandbox proxy, repeatable, on top of `pypi.org`, `files.pythonhosted.org` and the Ansible Galaxy hosts. Plain lowercase host names only, no wildcard, no address and no `localhost`. A private or alternate index, or a host named in a collections requirements file, needs it. It applies to the daemon only, and the Galaxy defaults are the API host and the bucket its downloads redirect to. See [job sandboxing](../guide/sandbox.md#egress). |
 | `--secret-staging` | `auto` | Where a run-secret staged as a file (`bootstrap run --capture-file`) lands: `auto`, `tmpfs`, or `disk`. See below. |
 
 ## Job isolation
@@ -147,10 +148,11 @@ those paths before a job starts, so a profile that would expose them fails the j
 than running it.
 
 **Egress is filtered by port, not by destination.** Landlock's network rules match the TCP
-port and nothing else, and the only per-destination filtering nono offers routes traffic
-through an HTTPS-terminating proxy — unusable for SSH and wrong for provider signature
-verification. So an ansible job can open TCP 22 to any address, and a tofu job any TCP 443.
-Restricting *which* hosts a job reaches stays a network-layer question.
+port and nothing else, and the only per-destination filtering nono offers is a proxy that
+matches host names and relays to a named host on any port. The dependency resolvers use
+it ([job sandboxing](../guide/sandbox.md#egress)). Ansible and tofu jobs stay on port
+grants, so an ansible job can open TCP 22 to any address, and a tofu job any TCP 443.
+Restricting *which* hosts those jobs reach stays a network-layer question.
 
 ### Extra tofu egress ports
 
