@@ -454,6 +454,13 @@ func reportSandbox(ctx context.Context, w io.Writer) {
 			p("  %-18s %s NOT granted: relative, missing, or overlapping the data dir\n", "managed python", want)
 		}
 	}
+	if res.Enforced {
+		if res.ProxyEnforced {
+			p("  %-18s enforced — the dependency resolvers' mode, through the filtering proxy\n", "proxy mode")
+		} else {
+			p("  %-18s NOT enforced, so the dependency resolvers will not run: %s\n", "proxy mode", res.ProxyReason)
+		}
+	}
 	if res.Enforced && !res.PathnameSocketMediated {
 		p("  %-18s pathname AF_UNIX connect is not mediated by any Landlock ABI;\n",
 			"unix sockets")

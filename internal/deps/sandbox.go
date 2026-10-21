@@ -20,9 +20,23 @@ type SandboxLauncher interface {
 	Wrap(argv []string) ([]string, error)
 }
 
+// PythonIndexHosts are the hosts uv reaches for the default index. uv does not
+// look names up through the system resolver, and the sandbox blocks the lookup it
+// does, so a raw port grant cannot serve it; nono's proxy resolves names for it,
+// and only for the hosts named.
+func PythonIndexHosts() []string {
+	return []string{"pypi.org", "files.pythonhosted.org"}
+}
+
+// GalaxyHosts are the hosts ansible-galaxy reaches: the galaxy API, and the
+// bucket its artifact downloads redirect to.
+func GalaxyHosts() []string {
+	return []string{"galaxy.ansible.com", "ansible-galaxy-ng.s3.dualstack.us-east-1.amazonaws.com"}
+}
+
 // depsSandboxKind names the resolver's sandbox profile. It is deliberately not
-// KindAnsible or KindTofu: the resolver's only egress is HTTPS to a package
-// index, granted explicitly below, never a per-kind default.
+// KindAnsible or KindTofu: the resolver's only egress is HTTP(S) to a package
+// index through nono's proxy, granted explicitly below, never a per-kind default.
 const depsSandboxKind = "deps"
 
 // ResolverSandboxOptions are the grants one resolver run needs. Everything not
@@ -44,25 +58,27 @@ type ResolverSandboxOptions struct {
 	// WritePaths are granted read+write on top of VenvDir: the uv cache a
 	// download stages through.
 	WritePaths []string
-	// Offline drops the network grant. When false the resolver is granted HTTPS
-	// egress so uv can fetch from a package index; when true it resolves from
-	// the cache alone and reaches no host.
+	// AllowDomains are the package index hosts the resolver reaches through
+	// nono's proxy. Empty reaches no host, which is also what Offline asks for.
+	AllowDomains []string
+	// Offline drops the network grant: the resolver resolves from the cache
+	// alone and reaches no host, whatever AllowDomains names.
 	Offline bool
 }
 
 // NewResolverSandbox builds the resolver's confinement from the executor's
 // job-sandbox machinery (Decision 0005) — the same launcher every job runs under,
 // not a second sandbox. uv is granted write on its venv and cache, read on its
-// tool tree and the manifest, HTTPS only when it must download, and nothing
+// tool tree and the manifest, the proxy only when it must download, and nothing
 // else; the data dir and the keys are denied by the guard ProfileFor runs.
 func NewResolverSandbox(opts ResolverSandboxOptions) SandboxLauncher {
 	write := opts.WritePaths
 	if opts.VenvDir != "" {
 		write = append([]string{opts.VenvDir}, write...)
 	}
-	var ports []int
+	var domains []string
 	if !opts.Offline {
-		ports = []int{executor.HTTPSPort}
+		domains = opts.AllowDomains
 	}
 	profile := executor.ProfileFor(depsSandboxKind, executor.SandboxOptions{
 		Binary:       opts.Binary,
@@ -70,7 +86,7 @@ func NewResolverSandbox(opts ResolverSandboxOptions) SandboxLauncher {
 		ReadPaths:    append(slices.Clone(opts.ReadPaths), executor.PythonInstallGrants(opts.DataDir)...),
 		ReadFiles:    uvConfigFiles(),
 		WritePaths:   write,
-		ConnectPorts: ports,
+		AllowDomains: domains,
 	})
 	return resolverSandbox{profile: profile}
 }

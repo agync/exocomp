@@ -26,17 +26,21 @@ func TestResolverSandboxWrapsAndDeniesDataDir(t *testing.T) {
 	data := t.TempDir()
 	cacheSource := filepath.Join(t.TempDir(), "src")
 	sb := NewResolverSandbox(ResolverSandboxOptions{
-		Binary:  "/opt/nono",
-		DataDir: data,
-		VenvDir: cacheSource,
+		Binary:       "/opt/nono",
+		DataDir:      data,
+		VenvDir:      cacheSource,
+		AllowDomains: PythonIndexHosts(),
 	})
 	full, err := sb.Wrap([]string{"/usr/bin/uv", "pip", "install", "jmespath"})
 	if err != nil {
 		t.Fatalf("wrap: %v", err)
 	}
 
-	if got, want := full[:5], []string{"/opt/nono", "run", "--silent", "--no-audit", "--block-net"}; !slices.Equal(got, want) {
+	if got, want := full[:4], []string{"/opt/nono", "run", "--silent", "--no-audit"}; !slices.Equal(got, want) {
 		t.Errorf("launcher prefix = %v, want %v", got, want)
+	}
+	if slices.Contains(full, "--block-net") {
+		t.Errorf("resolver in proxy mode still passes --block-net, which nono refuses with --allow-domain: %v", full)
 	}
 	sep := slices.Index(full, "--")
 	if sep < 0 {
@@ -48,8 +52,11 @@ func TestResolverSandboxWrapsAndDeniesDataDir(t *testing.T) {
 	if !slices.Contains(flagValues(full, "--allow"), cacheSource) {
 		t.Errorf("venv cache dir not granted write: %v", full)
 	}
-	if !slices.Contains(flagValues(full, "--allow-connect-port"), "443") {
-		t.Errorf("resolver not granted HTTPS egress: %v", full)
+	if got, want := flagValues(full, "--allow-domain"), []string{"files.pythonhosted.org", "pypi.org"}; !slices.Equal(got, want) {
+		t.Errorf("resolver --allow-domain = %v, want %v", got, want)
+	}
+	if got := flagValues(full, "--allow-connect-port"); len(got) != 0 {
+		t.Errorf("resolver carries raw connect ports %v next to the proxy", got)
 	}
 	// The data dir, and every key beneath it, must be reachable through no grant.
 	for _, grant := range slices.Concat(flagValues(full, "--allow"), flagValues(full, "--read"), flagValues(full, "--read-file")) {
@@ -235,5 +242,78 @@ func TestResolverSandboxGrantsThePythonInstallDir(t *testing.T) {
 	}
 	if got := wrap(); slices.Contains(got, inside) || slices.Contains(got, insideResolved) {
 		t.Errorf("resolver read grants %v reach inside the data dir via %s", got, inside)
+	}
+}
+
+// TestResolverSandboxOfflineReachesNoHost: an offline resolve is cache-only, so
+// its profile keeps --block-net and names no domain.
+func TestResolverSandboxOfflineReachesNoHost(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	sb := NewResolverSandbox(ResolverSandboxOptions{
+		Binary: "/opt/nono", DataDir: data, VenvDir: filepath.Join(data, "cache", "v"),
+		AllowDomains: PythonIndexHosts(), Offline: true,
+	})
+	full, err := sb.Wrap([]string{"/usr/bin/uv", "pip", "install", "jmespath"})
+	if err != nil {
+		t.Fatalf("wrap: %v", err)
+	}
+	if !slices.Contains(full, "--block-net") {
+		t.Errorf("offline resolver does not block the network: %v", full)
+	}
+	if got := flagValues(full, "--allow-domain"); len(got) != 0 {
+		t.Errorf("offline resolver names domains %v", got)
+	}
+}
+
+// TestResolverHostsAreNamedHosts: the defaults each resolver ships are plain host
+// names, never a wildcard, because the proxy filters by name and a wildcard lets a
+// name that resolves to loopback or the LAN through.
+func TestResolverHostsAreNamedHosts(t *testing.T) {
+	t.Parallel()
+
+	for name, hosts := range map[string][]string{"uv": PythonIndexHosts(), "ansible-galaxy": GalaxyHosts()} {
+		if len(hosts) == 0 {
+			t.Errorf("%s has no default hosts", name)
+		}
+		for _, h := range hosts {
+			if strings.ContainsAny(h, "*/: ") {
+				t.Errorf("%s default host %q is not a plain host name", name, h)
+			}
+		}
+	}
+}
+
+// TestResolverSandboxReachesOnlyTheNamedHosts: the resolver's network is the
+// hosts it is given and nothing wider. A resolver given none keeps --block-net,
+// so an unconfigured caller fails closed instead of opening the network.
+func TestResolverSandboxReachesOnlyTheNamedHosts(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	build := func(hosts []string) []string {
+		t.Helper()
+		sb := NewResolverSandbox(ResolverSandboxOptions{
+			Binary: "/opt/nono", DataDir: data, VenvDir: filepath.Join(data, "cache", "v"), AllowDomains: hosts,
+		})
+		full, err := sb.Wrap([]string{"/usr/bin/uv", "venv"})
+		if err != nil {
+			t.Fatalf("wrap: %v", err)
+		}
+		return full
+	}
+
+	full := build([]string{"index.example.net", "pypi.org"})
+	if slices.Contains(full, "--block-net") {
+		t.Errorf("proxy mode still passes --block-net: %v", full)
+	}
+	if got, want := flagValues(full, "--allow-domain"), []string{"index.example.net", "pypi.org"}; !slices.Equal(got, want) {
+		t.Errorf("--allow-domain = %v, want %v", got, want)
+	}
+
+	none := build(nil)
+	if !slices.Contains(none, "--block-net") || len(flagValues(none, "--allow-domain")) != 0 {
+		t.Errorf("a resolver given no hosts is not network-blocked: %v", none)
 	}
 }

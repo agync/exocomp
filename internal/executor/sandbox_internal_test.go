@@ -607,3 +607,79 @@ func TestPythonInstallGrants(t *testing.T) {
 		}
 	})
 }
+
+// fakeProbeLauncher stands in for nono: it records each invocation's argv to
+// log, fails when the profile names a domain and failProxy is set, and otherwise
+// runs the payload after `--` without a kernel sandbox.
+func fakeProbeLauncher(t *testing.T, dir, log string, failProxy bool) string {
+	t.Helper()
+	fail := ""
+	if failProxy {
+		fail = "case \"$*\" in *--allow-domain*) echo proxy-refused >&2; exit 4;; esac\n"
+	}
+	script := "#!/bin/sh\necho \"$*\" >> " + log + "\n" + fail +
+		"while [ \"$#\" -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\n[ \"$#\" -gt 0 ] && shift\nexec \"$@\"\n"
+	path := filepath.Join(dir, "nono")
+	writeExecutable(t, path, script)
+	return path
+}
+
+// probeRun is what one probe assertion against the fakes returned, with the
+// launcher invocations it made.
+type probeRun struct {
+	report string
+	proxy  error
+	err    error
+	calls  []string
+}
+
+// probeWithFakes runs the probe's assertion against a fake launcher and a canary
+// stub that reports a refusal.
+func probeWithFakes(t *testing.T, failProxy bool) probeRun {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	launcher := fakeProbeLauncher(t, dir, log, failProxy)
+	canary := filepath.Join(dir, "canary")
+	writeExecutable(t, canary, "#!/bin/sh\necho "+canaryPrefix+" file=denied\n")
+
+	var r probeRun
+	r.report, r.proxy, r.err = runCanaryProbe(context.Background(), ProbeOptions{Binary: launcher, Canary: canary})
+	body, _ := os.ReadFile(log)
+	r.calls = strings.Split(strings.TrimSpace(string(body)), "\n")
+	return r
+}
+
+// TestProbeRunsTheCanaryInBothEgressModes: the resolvers run in proxy mode, so
+// the probe asserts the denials there as well as in the port mode.
+func TestProbeRunsTheCanaryInBothEgressModes(t *testing.T) {
+	r := probeWithFakes(t, false)
+	if r.err != nil || r.proxy != nil {
+		t.Fatalf("probe = %v, proxy = %v", r.err, r.proxy)
+	}
+	if r.report == "" || len(r.calls) != 2 {
+		t.Fatalf("report %q after %d launcher calls, want one report after two: %v", r.report, len(r.calls), r.calls)
+	}
+	if !strings.Contains(r.calls[0], "--block-net") || strings.Contains(r.calls[0], "--allow-domain") {
+		t.Errorf("port-mode pass = %q, want --block-net and no domain", r.calls[0])
+	}
+	if strings.Contains(r.calls[1], "--block-net") || !strings.Contains(r.calls[1], "--allow-domain example.invalid") {
+		t.Errorf("proxy-mode pass = %q, want --allow-domain and no --block-net", r.calls[1])
+	}
+}
+
+// TestProxyPassFailureDoesNotDegradeThePortMode: a launcher whose proxy mode
+// fails is reported apart, so the other job kinds stay sandboxed and only the
+// resolvers refuse to run.
+func TestProxyPassFailureDoesNotDegradeThePortMode(t *testing.T) {
+	r := probeWithFakes(t, true)
+	if r.err != nil {
+		t.Fatalf("a failed proxy pass failed the port mode: %v", r.err)
+	}
+	if r.report == "" {
+		t.Error("the port mode reported nothing")
+	}
+	if r.proxy == nil || !strings.Contains(r.proxy.Error(), "proxy mode") {
+		t.Errorf("proxy result = %v, want a proxy mode failure", r.proxy)
+	}
+}
