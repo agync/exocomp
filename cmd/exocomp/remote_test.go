@@ -118,6 +118,45 @@ func TestBareCommandStaysLocal(t *testing.T) {
 	}
 }
 
+// A run with no --remote executes on this machine even when hosts.toml names a
+// default remote, so it says so on stderr, and it still never contacts the
+// remote.
+func TestLocalRunNotesTheDefaultRemote(t *testing.T) {
+	pinnedRemote(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("a bare run must NOT contact the remote")
+	}))
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	// Each run names something absent, so it fails after the notice instead of
+	// running anything.
+	for _, args := range [][]string{
+		{"playbook", "run", "site.yml", "--source", "absent"},
+		{"workspace", "plan", "absent"},
+		{"workspace", "apply", "absent"},
+		{"workspace", "destroy", "absent"},
+	} {
+		_, errOut, err := runRoot(t, args)
+		if err == nil {
+			t.Fatalf("%v succeeded against an absent target", args)
+		}
+		if !strings.Contains(errOut, `not on the default remote "box"`) {
+			t.Errorf("%v printed no local-run notice on stderr: %q", args, errOut)
+		}
+	}
+}
+
+// With no default remote stored there is nothing to confuse a local run with,
+// so it prints no notice.
+func TestLocalRunWithoutDefaultRemoteIsQuiet(t *testing.T) {
+	withConfigHome(t)
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	_, errOut, _ := runRoot(t, []string{"workspace", "plan", "absent"})
+	if strings.Contains(errOut, "default remote") {
+		t.Fatalf("notice printed with no default remote: %q", errOut)
+	}
+}
+
 // A pinned-cert mismatch is refused: the stored fingerprint does not match the
 // server's cert, so the connection is rejected before any data is read.
 func TestRemotePinMismatchRefused(t *testing.T) {
