@@ -131,6 +131,15 @@ every sandboxed job can then reach the host's resolver, which
 [the threat model](../security/threat-model.md) records. Where that is not acceptable, give
 the inventory an `ansible_host` that is an address.
 
+## Ansible's remote temp
+
+The image's user has no home of its own in `/etc/passwd`. Under `UserNS=keep-id` podman
+adds an entry whose home is `/`. For a local connection ansible expands its default remote
+temp, `~/.ansible/tmp`, through that entry, to `/.ansible/tmp`, which no job can write. The
+sandbox sets remote temp to `$HOME/.ansible/tmp` instead. A local connection expands it to
+the job's own home and an ssh target to its user's home, so neither needs an
+`ansible_remote_tmp` in the inventory. See [running a playbook](playbook-run.md).
+
 ## Add a system package
 
 A playbook that shells out to a binary the base does not carry gets it by
