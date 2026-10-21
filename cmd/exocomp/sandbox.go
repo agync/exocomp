@@ -462,8 +462,9 @@ func reportSandbox(ctx context.Context, w io.Writer) {
 		}
 	}
 	if res.Enforced && !res.PathnameSocketMediated {
-		p("  %-18s pathname AF_UNIX connect is not mediated by any Landlock ABI;\n",
+		p("  %-18s pathname AF_UNIX connect is not mediated by any Landlock ABI, so the\n",
 			"unix sockets")
-		p("  %-18s exocomp therefore places no socket where a job can name one\n", "")
+		p("  %-18s sandbox refuses no such socket a job can name, a mounted resolver\n", "")
+		p("  %-18s socket included. exocomp serves none of its own.\n", "")
 	}
 }
