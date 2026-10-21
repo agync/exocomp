@@ -101,7 +101,7 @@ func runWeb(ctx context.Context, out, warn io.Writer, opts webOptions) (err erro
 	// A standalone web process owns no scheduler or job queue, so it exposes no
 	// maintenance seam: the daemon that runs jobs is the one to cordon. It does
 	// hold the envelope, so the ntfy leg's judgment and test push work here.
-	surface, err := startWebSurface(ctx, st, env, dir, engine, nil, newNtfySeam(st, env), opts.basePath, opts.addr, opts.insecure, warn)
+	surface, err := startWebSurface(ctx, st, env, dir, engine, nil, newNtfySeam(st, env), opts.basePath, opts.addr, opts.insecure, nil, warn)
 	if err != nil {
 		return err
 	}
@@ -165,9 +165,11 @@ func (w *webSurface) Shutdown(ctx context.Context) error {
 // --insecure-http is loud. decider is the caller's reactive engine, so an
 // approval decided here releases the job into that process's queue. ntfy is
 // the ntfy leg's seam (the daemon's judgment + test push); a caller that wants
-// no push surface passes nil.
+// no push surface passes nil. identityAllow is the validated set of ssh identity
+// files a run enqueued here may read; nil refuses every one.
 func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope, dir string,
-	decider web.Decider, maint web.Maintenance, ntfy web.NtfyDriver, basePath, addr string, insecure bool, warn io.Writer) (*webSurface, error) {
+	decider web.Decider, maint web.Maintenance, ntfy web.NtfyDriver, basePath, addr string, insecure bool,
+	identityAllow []string, warn io.Writer) (*webSurface, error) {
 	guardWarn, err := web.RequireTokenForBind(ctx, st, addr, insecure, time.Now().UTC())
 	if err != nil {
 		return nil, err
@@ -204,6 +206,8 @@ func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope
 		Version:     version.String(),
 		DataDir:     dir,
 		BasePath:    basePath,
+
+		SSHIdentityAllow: identityAllow,
 	})
 	if err != nil {
 		return nil, err

@@ -92,10 +92,6 @@ func newPlaybookCmd() *cobra.Command {
 				return errors.New("playbook run: --privileged applies to a local run; " +
 					"a --remote run's tier is the daemon's, set on that host")
 			}
-			if len(identityFiles) > 0 && remote {
-				return errors.New("playbook run: --ssh-identity applies to a local run; " +
-					"a --remote run resolves paths on the daemon, which does not offer this grant yet")
-			}
 			if privileged {
 				warnPrivileged(warn)
 			}
@@ -108,7 +104,7 @@ func newPlaybookCmd() *cobra.Command {
 					skipTags: skipTags, extraVars: extraVars, check: check, diff: diff,
 					tolerateUnreachable: tolerateUnre, wait: wait, noFollow: noFollow,
 					timeout: timeout, idempotencyKey: idempotencyKey(cmd),
-					runnerName: runnerName, egressPorts: egressPorts,
+					runnerName: runnerName, egressPorts: egressPorts, sshIdentity: sshIdentity,
 				}))
 			}
 			if noFollow {

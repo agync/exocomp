@@ -40,6 +40,12 @@ const (
 	EnvSealNamespace = "EXOCOMP_SEAL_TRANSIT_NAMESPACE"
 )
 
+// UnwrapSecretPathEnvs name the variables that point at a path outside the data
+// volume holding what unwraps the DEK: the systemd credentials directory, the
+// host-key passphrase file, and the transit seal token file. No job may be
+// granted a path any of them names.
+var UnwrapSecretPathEnvs = []string{EnvCredentialsDirectory, EnvHostKeyPassphraseFile, EnvSealTokenFile}
+
 // transitTimeout bounds one wrap/unwrap round trip so a black-holed address
 // fails Open with a clear error instead of hanging the daemon at boot.
 const transitTimeout = 15 * time.Second

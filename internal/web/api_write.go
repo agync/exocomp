@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -615,6 +617,11 @@ type playbookRunRequest struct {
 	// EgressPorts are the outbound TCP ports the sandboxed run may open on top
 	// of the ansible kind's SSH port 22, validated (1..65535) before enqueue.
 	EgressPorts []int `json:"egress_ports"`
+	// SSHIdentityFiles are ssh identity key files on the daemon the run may
+	// read. Each must be one the operator allowed with serve
+	// --allow-ssh-identity, because the caller names paths on a host it does
+	// not control.
+	SSHIdentityFiles []string `json:"ssh_identity_files"`
 }
 
 // apiPlaybookRun enqueues an ansible playbook through RunPlaybook and returns the
@@ -655,6 +662,12 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 	// A junk egress port is refused here, at the write face, so a typo never
 	// reaches a job row.
 	egressPorts, err := store.NormalizeEgressPorts(req.EgressPorts)
+	if err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+
+	identities, err := s.allowedIdentities(req.SSHIdentityFiles)
 	if err != nil {
 		s.badRequest(w, err.Error())
 		return
@@ -732,6 +745,7 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		Timeout:             timeout,
 		RunnerName:          req.Runner,
 		EgressPorts:         egressPorts,
+		SSHIdentityFiles:    identities,
 		Actor:               actorFromRequest(r),
 	})
 	if err != nil {
@@ -739,6 +753,25 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: res.Job.ID, State: string(res.Job.State)})
+}
+
+// allowedIdentities validates the ssh identity files a request asks its run to
+// read: absolute, each one the operator allowed, and each still a regular file
+// outside the data dir and the host key's secrets, so a listed path swapped
+// for a symlink after serve started is refused. The refusal names the serve
+// flag, since only the daemon's operator can widen the set.
+func (s *Server) allowedIdentities(paths []string) ([]string, error) {
+	identities, err := store.NormalizeSSHIdentityFiles(paths)
+	if err != nil || len(identities) == 0 {
+		return identities, err
+	}
+	for _, id := range identities {
+		if !slices.Contains(s.sshIdentityAllow, id) {
+			return nil, fmt.Errorf("ssh identity %s is not allowed on this daemon "+
+				"(its operator allows files with serve --allow-ssh-identity)", id)
+		}
+	}
+	return executor.NormalizeIdentityAllowlist(s.dataDir, identities)
 }
 
 // --- job cancel -------------------------------------------------------------

@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"exocomp.dev/exocomp/internal/secrets"
 )
 
 // Tier names how much isolation a job subprocess runs under
@@ -292,6 +294,51 @@ func PythonInstallGrants(dataDir string) []string {
 		return nil
 	}
 	return normalizePaths([]string{dir})
+}
+
+// NormalizeIdentityAllowlist validates the ssh identity files an operator lets
+// a remote run grant, and returns them cleaned, sorted and de-duplicated. Each
+// must be an absolute path to a regular file outside the data dir and outside
+// every path secrets.UnwrapSecretPathEnvs names, judged both as written and
+// with symlinks resolved. A
+// directory would grant every key beside the one named, and the guard protects
+// the data dir file by file, so a key inside it would sit beside state no job
+// may read. It is cheap enough to run again on every request, which catches a
+// path swapped for a symlink after the daemon started.
+func NormalizeIdentityAllowlist(dataDir string, paths []string) ([]string, error) {
+	data, err := filepath.Abs(dataDir)
+	if dataDir == "" || err != nil {
+		return nil, errors.New("no data dir to keep identity files out of")
+	}
+	denied := []string{data}
+	for _, env := range secrets.UnwrapSecretPathEnvs {
+		if v := os.Getenv(env); filepath.IsAbs(v) {
+			denied = append(denied, filepath.Clean(v))
+		}
+	}
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			return nil, fmt.Errorf("identity file %q is not an absolute path", p)
+		}
+		p = filepath.Clean(p)
+		info, err := os.Stat(p)
+		if err != nil {
+			return nil, fmt.Errorf("identity file %q: %w", p, err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("identity file %q is not a regular file", p)
+		}
+		resolved := resolveSymlinks(p)
+		for _, d := range denied {
+			if covers(d, p) || covers(resolveSymlinks(d), resolved) {
+				return nil, fmt.Errorf("identity file %q is inside %s, which no job may read", p, d)
+			}
+		}
+		out = append(out, p)
+	}
+	slices.Sort(out)
+	return slices.Compact(out), nil
 }
 
 // toolDirs is the grant set for one resolved executable: its directory, plus
