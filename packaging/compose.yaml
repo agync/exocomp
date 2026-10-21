@@ -23,6 +23,9 @@ services:
     #   docker run --rm -v exocomp-state:/var/lib/exocomp \
     #     ghcr.io/agync/exocomp:latest --no-input token new web
     command: ["serve", "--port", "8643", "--web-addr", "0.0.0.0:8642"]
+    # Lets the image's gid 1000 send ping checks from this network namespace.
+    sysctls:
+      net.ipv4.ping_group_range: "1000 1000"
     ports:
       - "127.0.0.1:8642:8642"
       - "127.0.0.1:8643:8643"

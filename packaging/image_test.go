@@ -292,3 +292,28 @@ func TestRuntimeShipsPingWithoutRawCapabilities(t *testing.T) {
 		t.Error("the runtime stage keeps arping and clockdiff, which carry cap_net_raw")
 	}
 }
+
+// TestUnitsLetTheImageGidPing: podman gives a container's own network
+// namespace a ping_group_range of "0 0", so a ping check fails there unless the
+// unit widens it. Both units widen it to the gid of the image's USER, which
+// keep-id keeps. The Quadlet value must stay quoted, or Quadlet splits it at
+// the space.
+func TestUnitsLetTheImageGidPing(t *testing.T) {
+	user := regexp.MustCompile(`(?m)^USER (\d+):(\d+)$`).FindStringSubmatch(readPackagingFile(t, "Containerfile"))
+	if user == nil {
+		t.Fatal("the Containerfile sets no numeric USER uid:gid")
+	}
+	gid := user[2]
+
+	value := gid + " " + gid
+
+	want := `Sysctl="net.ipv4.ping_group_range=` + value + `"`
+	quadlet := readPackagingFile(t, "quadlet/exocomp.container")
+	if !regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(want) + `$`).MatchString(quadlet) {
+		t.Errorf("the quadlet does not set %s, so a ping check cannot open an ICMP socket", want)
+	}
+	want = `net.ipv4.ping_group_range: "` + value + `"`
+	if !strings.Contains(readPackagingFile(t, "compose.yaml"), want) {
+		t.Errorf("compose.yaml does not set %s, so a ping check cannot open an ICMP socket", want)
+	}
+}
