@@ -247,3 +247,32 @@ func TestConstraintsPinTheResolvedSet(t *testing.T) {
 		}
 	}
 }
+
+// TestRuntimeStageKeepsUVPythonDir: the toolchain stage installs the frozen
+// interpreter under UV_PYTHON_INSTALL_DIR, and uv only finds it at runtime if
+// the final stage carries the same value.
+func TestRuntimeStageKeepsUVPythonDir(t *testing.T) {
+	body := readPackagingFile(t, "Containerfile")
+	stages := strings.Split(body, "\nFROM ")
+	if len(stages) < 3 {
+		t.Fatalf("Containerfile has %d stages, want the toolchain and runtime stages among them", len(stages))
+	}
+	dirRe := regexp.MustCompile(`UV_PYTHON_INSTALL_DIR=(\S+)`)
+	var build string
+	for _, st := range stages {
+		if strings.Contains(strings.SplitN(st, "\n", 2)[0], "AS toolchain") {
+			build = st
+		}
+	}
+	runtime := stages[len(stages)-1]
+	buildDir, runtimeDir := dirRe.FindStringSubmatch(build), dirRe.FindStringSubmatch(runtime)
+	if buildDir == nil {
+		t.Fatal("the toolchain stage does not set UV_PYTHON_INSTALL_DIR")
+	}
+	if runtimeDir == nil || runtimeDir[1] != buildDir[1] {
+		t.Errorf("the runtime stage sets UV_PYTHON_INSTALL_DIR to %v, want %s as in the toolchain stage", runtimeDir, buildDir[1])
+	}
+	if !strings.Contains(runtime, "UV_PYTHON_DOWNLOADS=manual") {
+		t.Error("the runtime stage does not stop uv fetching an interpreter on its own (UV_PYTHON_DOWNLOADS=manual)")
+	}
+}
