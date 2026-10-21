@@ -6,6 +6,14 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-22
+
+- **Ping in the image documented.** [Containers](operations/containers.md) lists `ping` among
+  what the base image carries and says which network setups let the daemon send ICMP, and
+  [the bill of materials](sbom/bill-of-materials.md) adds `iputils`. [Check-triggered
+  runs](design/check-triggered-runs.md) no longer names `fping` or a doctor probe for ICMP,
+  neither of which exists.
+
 ## 2026-10-21
 
 - **Container host management documented.** [Containers](operations/containers.md) says how
