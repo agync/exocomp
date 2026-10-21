@@ -129,6 +129,13 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
   the child's HTTP inside the unconfined launcher, a new surface.
   Accepted because sources are operator-added and the resolver cannot read `exocomp.db` or
   the keys.
+- **Host resolver socket in a container —** the recipe for name resolution in a container
+  mounts systemd-resolved's socket, a pathname unix socket that Landlock does not mediate,
+  so every sandboxed job can reach it. A job can resolve any name, and can send data out
+  inside a query to a name server it controls. Accepted for the convenience of named
+  inventory hosts and avoided by an inventory of addresses. It is an exception, for a
+  container, to the placement argument in
+  [Decision 0005](../decisions/0005-job-sandboxing-nono.md).
 - **Shared uv cache —** every source's resolver is granted write on one uv cache,
   `cache/python/uv-cache`, and each venv is hardlink-seeded from it (Decision 0011). A
   poisoned manifest's build backend can therefore change cache entries that a later resolve

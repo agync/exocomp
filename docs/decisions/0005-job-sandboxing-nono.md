@@ -51,6 +51,11 @@ Amended 2026-10-21: the dependency resolvers reach named package index hosts thr
 nono's filtering proxy instead of a port grant, because `uv` does not resolve names
 through the system resolver. See [job sandboxing](../guide/sandbox.md#egress).
 
+Amended 2026-10-21: a container that mounts the host resolver's socket for name resolution
+puts a pathname socket where a job can name it, so the placement argument below does not
+hold for that socket. See [containers](../operations/containers.md#resolving-host-names-under-the-sandbox)
+and the [threat model](../security/threat-model.md).
+
 Version floor **≥ 0.55.0**, sha256-pinned like restic.
 
 ## Consequences

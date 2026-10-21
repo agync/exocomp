@@ -121,9 +121,11 @@ Abstract sockets, which Landlock does scope, are refused; pathname ones are not.
 denial in [Decision 0005](../decisions/0005-job-sandboxing-nono.md) therefore holds by placement rather
 than by policy — exocomp ships no unix socket for a job to reach, its own surface is
 loopback TCP, and no podman socket is mounted into the container — and `doctor` prints the
-gap instead of implying a denial it cannot make. This is why the probe asserts against live
-targets rather than assuming kernel behavior: an assumption here would have hidden exactly
-this gap.
+gap instead of implying a denial it cannot make. The one operator-added exception is the
+host resolver socket a container may mount for name resolution
+([containers](../operations/containers.md#resolving-host-names-under-the-sandbox)).
+This is why the probe asserts against live targets rather than assuming kernel behavior:
+an assumption here would have hidden exactly this gap.
 
 The consequence that matters is unchanged: a playbook is arbitrary code from a git
 repository, and under this tier it cannot read the database, the host key, or the keyring.

@@ -32,7 +32,8 @@ scratch space) and may read its repo checkout, the tool tree, the managed-Python
 dir (`UV_PYTHON_INSTALL_DIR`, when set and outside the data dir), provider and collection
 caches, and the paths its argv names. It cannot read `exocomp.db`, `host.key`,
 `keyring.age`, `serve.lock`, other jobs' private directories, or any local socket —
-including the exocomp API socket and any podman socket.
+including the exocomp API socket and any podman socket. A socket an operator mounts into
+the container is not refused, and a job can reach it.
 
 `HOME` is redirected into the job's own directory, so an operator's `~/.ansible.cfg` or
 `~/.terraformrc` does not reach a queued run.
