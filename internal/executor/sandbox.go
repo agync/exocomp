@@ -618,8 +618,10 @@ func ParseCanaryTargets(args []string) (CanaryTargets, error) {
 // nothing, so no Landlock ABI shipped so far can refuse it; the abstract-socket
 // scope, which Landlock does implement, is the one that holds. Failing the tier
 // over an assertion no kernel can satisfy would trade a real sandbox for a
-// wrong one — the mitigation is that exocomp places no unix socket where a job
-// can name it, and this line is how a regression in that would surface.
+// wrong one. The mitigation is that exocomp serves no unix socket of its own,
+// and this line is how a regression in that would surface. A socket the host
+// or the operator puts in reach, such as a mounted resolver socket, is not
+// covered by it.
 func RunCanary(out, errOut io.Writer, targets CanaryTargets) int {
 	result := func(denied bool) string {
 		if denied {
