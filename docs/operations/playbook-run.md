@@ -43,12 +43,16 @@ tree's own `./ansible.cfg` — and the relative `inventory`, `roles_path`, and
 directory would. This is the same working-directory grant the lifecycle
 [`exocomp run`](run-lifecycle.md) path gives its play step, and it carries the source's
 read-only posture: a read-only checkout is granted read, never write, so the run reads its
-own tree but cannot write back to it. The sandbox redirects ansible's scratch (local temp,
-remote temp, and the ssh control-path directory) into the per-job private tree, so a repo
+own tree but cannot write back to it. The sandbox redirects ansible's controller scratch
+(local temp and the ssh control-path directory) into the per-job private tree, so a repo
 `ansible.cfg` with a relative `local_tmp` or `control_path_dir` still writes somewhere
-granted rather than onto the read-only checkout. A run with no `--source` keeps today's
-behavior: it executes in the executor's per-job scratch directory, and ansible discovers
-its own configuration from there.
+granted rather than onto the read-only checkout. Remote temp is set to
+`$HOME/.ansible/tmp`, which the shell on the far side of the connection expands. Over ssh
+that is the target user's home, as with ansible's default. Over a local connection it is
+the job's own home, whose `.ansible` directory the sandbox grants. An inventory
+`ansible_remote_tmp` still overrides it. A run with no `--source` keeps today's behavior: it
+executes in the executor's per-job scratch directory, and ansible discovers its own
+configuration from there.
 
 `--privileged` runs the job **unsandboxed** — the `disabled` tier, full host access — even when
 the daemon default is `enforcing`. It is operator-only, off by default, and audited; use it only

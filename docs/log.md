@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-10-21
 
+- **Remote temp corrected.** [Running a playbook](operations/playbook-run.md) no longer
+  says remote temp is redirected into the per-job tree. It says the value the sandbox sets,
+  `$HOME/.ansible/tmp`, and where each connection type expands it, and
+  [containers](operations/containers.md) says why the image's user needs it.
+
 - **Container name resolution documented.** [Containers](operations/containers.md) says
   why sandboxed jobs cannot resolve host names in the image and how to give them the host
   resolver, [the threat model](security/threat-model.md) records the unix socket that
