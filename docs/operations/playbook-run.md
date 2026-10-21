@@ -149,6 +149,39 @@ read each one's events through `AnsibleCheckChanges`, and raise an event when
 or gate on it. Wiring that sweep is the remaining step; the outcome and the
 read-back helper are in place for it.
 
+## Writing playbooks for the sandbox: paths that name the target's home
+
+Under the `enforcing` tier a job's `HOME` is a private scratch directory inside the job's
+own tree, not the home of any user (see [the sandbox guide](../guide/sandbox.md)). The
+`disabled` tier and `--privileged` runs keep the daemon's own `HOME`. Ansible evaluates
+some expressions on the controller, so they see the scratch directory as the user's home.
+A path to a target built from one of them points into the job directory: `--check` reports
+drift against that path, and an apply would write there.
+
+| Evaluated | Resolves `~` or `$HOME` to |
+|---|---|
+| `expanduser` filter, `lookup('env', 'HOME')`, `lookup('pipe', ...)` reading `$HOME` | the job's scratch home |
+| `~` in a `delegate_to: localhost` path, `os.path.expanduser` in a controller-side script | the job's scratch home |
+| A module argument such as `path: ~/x` on a task that runs on the target | the target user's home, expanded by the module on the target |
+
+`ansible_facts['user_dir']` is no substitute. A play that gathers facts again under
+`become` reports the become user's home, for example root's.
+
+Build target paths from a variable that names the target's home instead, such as an
+inventory variable derived from `ansible_user`:
+
+```yaml
+# inventory/group_vars/all.yml
+target_home: "/home/{{ ansible_user }}"
+```
+
+```yaml
+- name: Install the shell profile
+  ansible.builtin.template:
+    src: profile.j2
+    dest: "{{ target_home }}/.profile"
+```
+
 ## Sandbox denial hints: self-host `become`, keys, and `--privileged`
 
 Two failures of a sandboxed ansible run look like broken systems but are the sandbox

@@ -33,6 +33,11 @@ Newest first.
 
 ## 2026-10-21
 
+- **Job HOME documented as scratch.** [Running a playbook](operations/playbook-run.md) says
+  which controller-side constructs resolve `~` to a sandboxed job's private home, which
+  target-side module arguments do not, and to build target paths from a variable naming the
+  target's home.
+
 - **Container host management documented.** [Containers](operations/containers.md) says how
   a run started from the host differs from one started in the container, how the daemon
   manages the host it runs on through a loopback sshd and a key mounted read-only outside the
