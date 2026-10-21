@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"exocomp.dev/exocomp/internal/deps"
@@ -21,6 +22,52 @@ const pythonCacheDir = "cache/python"
 // resolver sandbox; uv's default cache lives under the daemon home, which the
 // sandbox does not grant.
 const uvCacheSubdir = "uv-cache"
+
+// resolverExtraHosts are the package index hosts an operator named with
+// `serve --resolver-allow-domain`, on top of each resolver's own hosts. It is
+// set once at startup, before any job runs.
+var resolverExtraHosts []string
+
+// resolverSandboxReady refuses a sandboxed resolve when the probe did not prove
+// the proxy mode the resolvers run in. Every other job kind stays sandboxed, so
+// only the resolvers fail, and they fail closed instead of running unconfined.
+func resolverSandboxReady(ctx context.Context) error {
+	if t := sandboxTier(ctx); !t.ProxyEnforced {
+		return fmt.Errorf("deps: the resolver sandbox cannot run, its proxy mode is not enforced on this host: %s", t.ProxyReason)
+	}
+	return nil
+}
+
+// configureResolverHosts sets the operator's extra resolver hosts from the
+// serve flag, once at startup. Nothing is set when a host is refused.
+func configureResolverHosts(hosts []string) error {
+	extra, err := normalizeResolverHosts(hosts)
+	if err != nil {
+		return err
+	}
+	resolverExtraHosts = extra
+	return nil
+}
+
+// resolverHosts is one resolver's own hosts plus the operator's extras.
+func resolverHosts(own []string) []string {
+	return slices.Concat(own, resolverExtraHosts)
+}
+
+// normalizeResolverHosts lowercases the operator's extra hosts and refuses any
+// that is not a plain DNS name, so the sandbox guard never sees one it would refuse.
+func normalizeResolverHosts(hosts []string) ([]string, error) {
+	out := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if err := executor.ValidateDomain(h); err != nil {
+			return nil, fmt.Errorf("--resolver-allow-domain: %w", err)
+		}
+		out = append(out, h)
+	}
+	slices.Sort(out)
+	return slices.Compact(out), nil
+}
 
 // galaxyTool is the ansible-galaxy binary a collections resolve invokes: on
 // PATH, or a per-source venv's sibling when the run resolved one.
@@ -69,15 +116,19 @@ func resolveProjectVenv(ctx context.Context, dataDir, anchor string) (deps.Venv,
 	// its venv cache and the manifest, denied the data dir and the keys; the
 	// daemon-context resolve stays only where no sandbox can enforce it.
 	if sandboxed(ctx) {
+		if err := resolverSandboxReady(ctx); err != nil {
+			return deps.Venv{}, err
+		}
 		uvCache := filepath.Join(cacheRoot, uvCacheSubdir)
 		read := executor.ToolGrants(deps.UVBinary, "python3")
 		read = append(read, manifest.Root)
 		spec.UVCacheDir = uvCache
 		spec.Sandbox = deps.NewResolverSandbox(deps.ResolverSandboxOptions{
-			DataDir:    dataDir,
-			VenvDir:    filepath.Join(cacheRoot, source),
-			ReadPaths:  read,
-			WritePaths: []string{uvCache},
+			DataDir:      dataDir,
+			VenvDir:      filepath.Join(cacheRoot, source),
+			ReadPaths:    read,
+			WritePaths:   []string{uvCache},
+			AllowDomains: resolverHosts(deps.PythonIndexHosts()),
 		})
 	}
 	return deps.EnsureVenv(ctx, spec)
@@ -131,6 +182,9 @@ func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (de
 	// galaxy that actually executes is granted — the venv's sibling when one
 	// was resolved, the image's otherwise (Decision 0015).
 	if sandboxed(ctx) {
+		if err := resolverSandboxReady(ctx); err != nil {
+			return deps.Collections{}, err
+		}
 		galaxyCache := filepath.Join(dataDir, galaxyCacheDir)
 		// The requirements file may name a local collection artifact
 		// (type: dir/file) — typically a sibling checkout outside the project
@@ -145,10 +199,11 @@ func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (de
 		}
 		spec.GalaxyCacheDir = galaxyCache
 		spec.Sandbox = deps.NewResolverSandbox(deps.ResolverSandboxOptions{
-			DataDir:    dataDir,
-			VenvDir:    filepath.Join(cacheRoot, source),
-			ReadPaths:  read,
-			WritePaths: deps.GalaxyCacheGrants(galaxyCache),
+			DataDir:      dataDir,
+			VenvDir:      filepath.Join(cacheRoot, source),
+			ReadPaths:    read,
+			WritePaths:   deps.GalaxyCacheGrants(galaxyCache),
+			AllowDomains: resolverHosts(deps.GalaxyHosts()),
 		})
 	}
 	return deps.EnsureCollections(ctx, spec)

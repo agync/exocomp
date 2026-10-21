@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -287,8 +288,11 @@ exec "$@"
 // sandbox-grant tests.
 func TestResolveSourceCollectionsSandboxGrantsVenvGalaxy(t *testing.T) {
 	resetSandboxDecision(t)
+	old := resolverExtraHosts
+	resolverExtraHosts = []string{"index.example.net"}
+	t.Cleanup(func() { resolverExtraHosts = old })
 	sandbox.requested = executor.TierEnforcing
-	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing}
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing, ProxyEnforced: true}
 	sandbox.once.Do(func() {})
 
 	nonoLog := filepath.Join(t.TempDir(), "nono-argv")
@@ -346,6 +350,68 @@ func TestResolveSourceCollectionsSandboxGrantsVenvGalaxy(t *testing.T) {
 	if !strings.Contains(launcher, "--read "+venvBin) {
 		t.Errorf("resolver profile does not read-grant the venv bin dir:\n%s", launcher)
 	}
+	// The collections resolver reaches the Galaxy hosts and an operator's extra,
+	// through the proxy and with no --block-net, and not uv's hosts.
+	if got, want := launcherDomains(launcher), []string{
+		"ansible-galaxy-ng.s3.dualstack.us-east-1.amazonaws.com", "galaxy.ansible.com", "index.example.net",
+	}; !slices.Equal(got, want) {
+		t.Errorf("galaxy resolver --allow-domain = %v, want %v\n%s", got, want, launcher)
+	}
+	if strings.Contains(launcher, "--block-net") {
+		t.Errorf("galaxy resolver in proxy mode still passes --block-net:\n%s", launcher)
+	}
+}
+
+// launcherDomains returns the sorted --allow-domain values in a recorded launcher argv.
+func launcherDomains(launcher string) []string {
+	var out []string
+	fields := strings.Fields(launcher)
+	for i := range fields {
+		if fields[i] == "--allow-domain" && i+1 < len(fields) {
+			out = append(out, fields[i+1])
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// TestResolveProjectVenvSandboxReachesOnlyIndexHosts: the uv resolver is handed
+// uv's index hosts plus an operator's extra, through the proxy and with no
+// --block-net. A fake nono records the launcher argv, as for the collections
+// resolver above.
+func TestResolveProjectVenvSandboxReachesOnlyIndexHosts(t *testing.T) {
+	resetSandboxDecision(t)
+	sandbox.requested = executor.TierEnforcing
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing, ProxyEnforced: true}
+	sandbox.once.Do(func() {})
+	old := resolverExtraHosts
+	resolverExtraHosts = []string{"index.example.net"}
+	t.Cleanup(func() { resolverExtraHosts = old })
+
+	nonoLog := filepath.Join(t.TempDir(), "nono-argv")
+	binDir := t.TempDir()
+	fakeNono(t, binDir, nonoLog)
+	fakeVenvUV(t, binDir, filepath.Join(t.TempDir(), "child.env"))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, "requirements.txt"), "jmespath==1.1.0\n")
+	if _, err := resolveProjectVenv(context.Background(), t.TempDir(), filepath.Join(project, "site.yml")); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	launcher := strings.TrimSpace(readFile(t, nonoLog))
+	if launcher == "" {
+		t.Fatal("the resolver did not run under the launcher")
+	}
+	for _, line := range strings.Split(launcher, "\n") {
+		if got, want := launcherDomains(line), []string{"files.pythonhosted.org", "index.example.net", "pypi.org"}; !slices.Equal(got, want) {
+			t.Errorf("uv resolver --allow-domain = %v, want %v\n%s", got, want, line)
+		}
+		if strings.Contains(line, "--block-net") {
+			t.Errorf("uv resolver in proxy mode still passes --block-net:\n%s", line)
+		}
+	}
 }
 
 // TestResolveSourceCollectionsSandboxGrantsLocalCollection is the live-bug
@@ -356,7 +422,7 @@ func TestResolveSourceCollectionsSandboxGrantsVenvGalaxy(t *testing.T) {
 func TestResolveSourceCollectionsSandboxGrantsLocalCollection(t *testing.T) {
 	resetSandboxDecision(t)
 	sandbox.requested = executor.TierEnforcing
-	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing}
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing, ProxyEnforced: true}
 	sandbox.once.Do(func() {})
 
 	nonoLog := filepath.Join(t.TempDir(), "nono-argv")
@@ -412,7 +478,7 @@ func TestResolveSourceCollectionsSandboxProvisionsWithoutOverlappingNonoState(t 
 	}
 	resetSandboxDecision(t)
 	sandbox.requested = executor.TierEnforcing
-	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing}
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing, ProxyEnforced: true}
 	sandbox.once.Do(func() {})
 
 	binDir := t.TempDir()
@@ -465,7 +531,7 @@ func TestResolveSourceCollectionsSandboxReadsLocalCollection(t *testing.T) {
 	}
 	resetSandboxDecision(t)
 	sandbox.requested = executor.TierEnforcing
-	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing}
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing, ProxyEnforced: true}
 	sandbox.once.Do(func() {})
 
 	project := t.TempDir()

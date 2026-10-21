@@ -255,3 +255,99 @@ func TestSandboxOptionsCarryThePythonInstallDir(t *testing.T) {
 		t.Errorf("read grants %v reach inside the data dir via %s", got, inside)
 	}
 }
+
+// TestResolverHostsAreDefaultsPlusExtras: an operator's extra hosts join a
+// resolver's own, and neither list is changed by the other.
+func TestResolverHostsAreDefaultsPlusExtras(t *testing.T) {
+	old := resolverExtraHosts
+	t.Cleanup(func() { resolverExtraHosts = old })
+
+	own := []string{"pypi.org"}
+	resolverExtraHosts = nil
+	if got := resolverHosts(own); !slices.Equal(got, []string{"pypi.org"}) {
+		t.Errorf("resolverHosts without extras = %v", got)
+	}
+	resolverExtraHosts = []string{"index.example.net"}
+	if got, want := resolverHosts(own), []string{"pypi.org", "index.example.net"}; !slices.Equal(got, want) {
+		t.Errorf("resolverHosts = %v, want %v", got, want)
+	}
+	if !slices.Equal(own, []string{"pypi.org"}) {
+		t.Errorf("the resolver's own hosts were modified: %v", own)
+	}
+}
+
+// TestNormalizeResolverHosts: the operator's extra hosts are lowercased and
+// de-duplicated, and anything that is not a plain DNS name stops the daemon at
+// startup instead of reaching the sandbox.
+func TestNormalizeResolverHosts(t *testing.T) {
+	got, err := normalizeResolverHosts([]string{"Index.Example.Net", "pypi.python.org", "index.example.net"})
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if want := []string{"index.example.net", "pypi.python.org"}; !slices.Equal(got, want) {
+		t.Errorf("normalized hosts = %v, want %v", got, want)
+	}
+	for _, bad := range []string{"", "*", "*.example.com", "localhost", "127.0.0.1", "https://pypi.org", "pypi.org:443"} {
+		if _, err := normalizeResolverHosts([]string{bad}); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
+// TestResolversRefuseWithoutProxyMode: a launcher whose proxy mode failed the
+// probe leaves the other job kinds sandboxed, and the resolvers fail closed
+// without launching anything.
+func TestResolversRefuseWithoutProxyMode(t *testing.T) {
+	resetSandboxDecision(t)
+	sandbox.requested = executor.TierEnforcing
+	sandbox.result = executor.ProbeResult{
+		Requested: executor.TierEnforcing, Effective: executor.TierEnforcing, Enforced: true,
+		ProxyEnforced: false, ProxyReason: "proxy mode: canary exited 4 under the sandbox",
+	}
+	sandbox.once.Do(func() {})
+
+	nonoLog := filepath.Join(t.TempDir(), "nono-argv")
+	binDir := t.TempDir()
+	fakeNono(t, binDir, nonoLog)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, "requirements.txt"), "jmespath==1.1.0\n")
+	writeFile(t, filepath.Join(project, "requirements.yml"), "collections:\n  - community.sops\n")
+	play := filepath.Join(project, "site.yml")
+
+	if _, err := resolveProjectVenv(context.Background(), t.TempDir(), play); err == nil || !strings.Contains(err.Error(), "proxy mode is not enforced") {
+		t.Errorf("uv resolve error = %v, want a proxy mode refusal", err)
+	}
+	// A project with no Python dependencies reaches the collections resolver's own
+	// check, since with them the uv resolver refuses first.
+	galaxyOnly := t.TempDir()
+	writeFile(t, filepath.Join(galaxyOnly, "requirements.yml"), "collections:\n  - community.sops\n")
+	if _, err := resolveSourceCollections(context.Background(), t.TempDir(), filepath.Join(galaxyOnly, "site.yml")); err == nil || !strings.Contains(err.Error(), "proxy mode is not enforced") {
+		t.Errorf("collections resolve error = %v, want a proxy mode refusal", err)
+	}
+	if _, err := os.Stat(nonoLog); err == nil {
+		t.Errorf("a resolver launched under the sandbox anyway:\n%s", readFile(t, nonoLog))
+	}
+}
+
+// TestConfigureResolverHosts: the serve flag sets the extras once, normalized,
+// and a refused host leaves them as they were.
+func TestConfigureResolverHosts(t *testing.T) {
+	old := resolverExtraHosts
+	t.Cleanup(func() { resolverExtraHosts = old })
+
+	resolverExtraHosts = nil
+	if err := configureResolverHosts([]string{"Index.Example.Net"}); err != nil {
+		t.Fatalf("configure: %v", err)
+	}
+	if want := []string{"index.example.net"}; !slices.Equal(resolverExtraHosts, want) {
+		t.Errorf("extras = %v, want %v", resolverExtraHosts, want)
+	}
+	if err := configureResolverHosts([]string{"ok.example.net", "*"}); err == nil {
+		t.Error("a wildcard was accepted")
+	}
+	if want := []string{"index.example.net"}; !slices.Equal(resolverExtraHosts, want) {
+		t.Errorf("a refused flag changed the extras to %v", resolverExtraHosts)
+	}
+}

@@ -93,6 +93,76 @@ func TestSandboxEgressIsPerKind(t *testing.T) {
 	}
 }
 
+// TestSandboxProxyModeReplacesBlockNet: nono refuses --block-net next to
+// --allow-domain, so a profile that names domains drops it and reaches the
+// network only through the proxy, which also resolves names for the child.
+func TestSandboxProxyModeReplacesBlockNet(t *testing.T) {
+	t.Parallel()
+
+	full := argvOf(t, "deps", executor.SandboxOptions{
+		DataDir: t.TempDir(), AllowDomains: []string{"pypi.org", "files.pythonhosted.org", "pypi.org"},
+	}, []string{"/bin/true"})
+
+	if slices.Contains(full, "--block-net") {
+		t.Errorf("proxy mode still passes --block-net: %v", full)
+	}
+	if got, want := flagValues(full, "--allow-domain"), []string{"files.pythonhosted.org", "pypi.org"}; !slices.Equal(got, want) {
+		t.Errorf("--allow-domain = %v, want %v", got, want)
+	}
+	if got := flagValues(full, "--allow-connect-port"); len(got) != 0 {
+		t.Errorf("proxy mode carries raw connect ports %v", got)
+	}
+}
+
+// TestSandboxRefusesMixedEgressModes: ports and domains are separate egress
+// modes, a blank domain is not a domain, and a wildcard would let a name that
+// resolves to loopback or the LAN through the proxy. Each is refused rather than
+// handed to nono to interpret.
+func TestSandboxRefusesMixedEgressModes(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	for _, tc := range []struct {
+		name string
+		kind string
+		opts executor.SandboxOptions
+	}{
+		{"ports and domains", "deps", executor.SandboxOptions{DataDir: data, ConnectPorts: []int{443}, AllowDomains: []string{"pypi.org"}}},
+		{"a kind that adds its own port", executor.KindAnsible, executor.SandboxOptions{DataDir: data, AllowDomains: []string{"pypi.org"}}},
+		{"a blank domain", "deps", executor.SandboxOptions{DataDir: data, AllowDomains: []string{" "}}},
+		{"a wildcard", "deps", executor.SandboxOptions{DataDir: data, AllowDomains: []string{"*"}}},
+		{"a wildcard subdomain", "deps", executor.SandboxOptions{DataDir: data, AllowDomains: []string{"*.example.com"}}},
+	} {
+		if _, err := executor.ProfileFor(tc.kind, tc.opts).Command([]string{"/bin/true"}); err == nil {
+			t.Errorf("%s: the profile was accepted", tc.name)
+		}
+	}
+}
+
+// TestValidateDomain: only lowercase DNS names pass. The proxy relays to whatever
+// a name resolves to, so anything that is an address or loopback by name, and any
+// pattern, is refused before it reaches nono.
+func TestValidateDomain(t *testing.T) {
+	t.Parallel()
+
+	for _, ok := range []string{"pypi.org", "files.pythonhosted.org", "index.example.net", "my-index.lan", "xn--bcher-kva.example", "a.b-c.d1"} {
+		if err := executor.ValidateDomain(ok); err != nil {
+			t.Errorf("%q refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{
+		"", " ", "*", "*.example.com", "PyPI.org", "pypi.org.", " pypi.org", "pypi.org:443", "https://pypi.org",
+		"pypi.org/simple", "-bad.org", "bad-.org", "a..b", "über.example",
+		"localhost", "foo.localhost",
+		"127.0.0.1", "10.1.2.3", "169.254.169.254", "0.0.0.0", "127.1", "2130706433", "0x7f000001", "1.0x7f", "::1",
+		strings.Repeat("a", 64) + ".org", strings.Repeat("a.", 130) + "org",
+	} {
+		if err := executor.ValidateDomain(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
 // TestSandboxNeverGrantsAUnixSocket: Decision 0005's CVE lesson is that a sandboxed
 // process reaching a powerful local unix socket is the escape. No profile this
 // package builds may carry a socket grant, whatever the caller asks for.

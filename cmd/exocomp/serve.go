@@ -139,6 +139,7 @@ type serveOptions struct {
 	publicURL      string
 	basePath       string
 	sandbox        string
+	resolverHosts  []string
 	webAddr        string
 	webInsecure    bool
 	secretStaging  string
@@ -195,6 +196,9 @@ func newServeCmd() *cobra.Command {
 		"also serve the token-gated LAN web+API surface here over TLS (Decision 0009); empty starts no web listener")
 	cmd.Flags().BoolVar(&opts.webInsecure, "web-insecure-http", false,
 		"serve the web surface as cleartext HTTP (loud, never the documented path)")
+	cmd.Flags().StringSliceVar(&opts.resolverHosts, "resolver-allow-domain", nil,
+		"extra package index host the dependency resolvers may reach through the sandbox proxy (repeatable), "+
+			"beyond pypi.org, files.pythonhosted.org and the Ansible Galaxy hosts")
 	cmd.Flags().StringVar(&opts.sandbox, "sandbox", "",
 		"job isolation tier: opportunistic, enforcing, or disabled (default: $"+sandboxTierEnv+", else enforcing)")
 	cmd.Flags().DurationVar(&opts.leaseTTL, "lease-ttl", opts.leaseTTL,
@@ -261,6 +265,9 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	}
 
 	if err := requestSandboxTier(opts.sandbox, warn); err != nil {
+		return fmt.Errorf("serve: %w", err)
+	}
+	if err := configureResolverHosts(opts.resolverHosts); err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
 	if err := enforceSandboxTier(ctx); err != nil {

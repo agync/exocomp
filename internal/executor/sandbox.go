@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -113,6 +114,12 @@ type SandboxOptions struct {
 	// ConnectPorts are the outbound TCP ports the job may connect to. Empty
 	// denies egress entirely.
 	ConnectPorts []int
+	// AllowDomains are the named hosts the job may reach through nono's
+	// filtering proxy, which also resolves their names for the child. It is a
+	// separate egress mode from ConnectPorts: nono refuses --block-net next to
+	// it. Raw TCP stays blocked, and the doctor probe asserts that for this mode
+	// as it does for the port mode.
+	AllowDomains []string
 	// Caps, when non-empty, caps the job's memory and cpu through a per-job
 	// cgroup (docs/design/byo-runner.md §6). Opt-in: the zero value runs the
 	// job uncapped, which is the default posture. When Caps is non-empty,
@@ -133,6 +140,41 @@ type SandboxProfile struct {
 	ReadFiles    []string
 	Write        []string
 	ConnectPorts []int
+	AllowDomains []string
+}
+
+// hostLabelRe is one DNS label: letters, digits and inner hyphens.
+var hostLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// ValidateDomain accepts a host name the filtering proxy may be told to allow.
+// The proxy matches names and relays to whatever a name resolves to, on any
+// port, so a wildcard would let a name that resolves to loopback or the LAN
+// through, and the job would reach the daemon's own listeners. Only lowercase
+// DNS names pass, which the label pattern enforces. An address does not: its
+// last label is all digits, which also catches the short and numeric forms libc
+// reads as loopback (127.1, 2130706433, 0x7f000001). localhost and its
+// subdomains are refused by name.
+func ValidateDomain(d string) error {
+	if strings.Contains(d, "*") {
+		return errors.New("a wildcard domain would reach loopback and the local network")
+	}
+	if d == "" || len(d) > 253 {
+		return fmt.Errorf("domain %q is empty or longer than 253 characters", d)
+	}
+	labels := strings.Split(d, ".")
+	for _, l := range labels {
+		if len(l) > 63 || !hostLabelRe.MatchString(l) {
+			return fmt.Errorf("domain %q is not a plain DNS name", d)
+		}
+	}
+	last := labels[len(labels)-1]
+	if strings.Trim(last, "0123456789") == "" || strings.HasPrefix(last, "0x") {
+		return fmt.Errorf("domain %q looks like an address, not a name", d)
+	}
+	if d == "localhost" || strings.HasSuffix(d, ".localhost") {
+		return fmt.Errorf("domain %q is loopback", d)
+	}
+	return nil
 }
 
 // ProfileFor resolves the policy for one job kind: the caller's grants plus
@@ -145,6 +187,7 @@ func ProfileFor(kind string, opts SandboxOptions) SandboxProfile {
 		ReadFiles:    normalizePaths(opts.ReadFiles),
 		Write:        normalizePaths(opts.WritePaths),
 		ConnectPorts: slices.Clone(opts.ConnectPorts),
+		AllowDomains: slices.Clone(opts.AllowDomains),
 	}
 	if p.Binary == "" {
 		p.Binary = NonoBinary
@@ -165,6 +208,8 @@ func ProfileFor(kind string, opts SandboxOptions) SandboxProfile {
 	}
 	slices.Sort(p.ConnectPorts)
 	p.ConnectPorts = slices.Compact(p.ConnectPorts)
+	slices.Sort(p.AllowDomains)
+	p.AllowDomains = slices.Compact(p.AllowDomains)
 
 	// A path granted read+write does not also need the read-only grant, and
 	// nono reports the narrower one as insufficient rather than merging them.
@@ -290,11 +335,16 @@ func (p SandboxProfile) Command(argv []string) ([]string, error) {
 		return nil, err
 	}
 
-	out := make([]string, 0, len(argv)+2*(len(p.Read)+len(p.ReadFiles)+len(p.Write)+len(p.ConnectPorts))+6)
+	out := make([]string, 0, len(argv)+2*(len(p.Read)+len(p.ReadFiles)+len(p.Write)+len(p.ConnectPorts)+len(p.AllowDomains))+6)
 	// --silent keeps nono's banner out of the job's event stream; --no-audit
 	// keeps its own Merkle ledger out of the data volume, because job_event is
 	// this project's audit surface and a second one would only rot.
-	out = append(out, p.Binary, "run", "--silent", "--no-audit", "--block-net")
+	out = append(out, p.Binary, "run", "--silent", "--no-audit")
+	// Proxy mode and --block-net are mutually exclusive in nono. The proxy
+	// still refuses raw TCP connections, which the probe asserts, so the default-deny posture holds.
+	if len(p.AllowDomains) == 0 {
+		out = append(out, "--block-net")
+	}
 	for _, r := range p.Read {
 		out = append(out, "--read", r)
 	}
@@ -306,6 +356,9 @@ func (p SandboxProfile) Command(argv []string) ([]string, error) {
 	}
 	for _, port := range p.ConnectPorts {
 		out = append(out, "--allow-connect-port", strconv.Itoa(port))
+	}
+	for _, domain := range p.AllowDomains {
+		out = append(out, "--allow-domain", domain)
 	}
 	out = append(out, "--")
 	return append(out, argv...), nil
@@ -327,6 +380,15 @@ func (p SandboxProfile) Validate() error {
 	// data dir under a symlinked ancestor. Resolve each and check the resolved
 	// forms as well; a path that does not yet exist keeps its lexical form.
 	realDataDir := resolveSymlinks(dataDir)
+
+	if len(p.AllowDomains) > 0 && len(p.ConnectPorts) > 0 {
+		return errors.New("executor: sandbox: connect ports and allowed domains are separate egress modes")
+	}
+	for _, d := range p.AllowDomains {
+		if err := ValidateDomain(d); err != nil {
+			return fmt.Errorf("executor: sandbox: %w", err)
+		}
+	}
 
 	type target struct {
 		lexical, resolved string
@@ -618,6 +680,13 @@ type ProbeResult struct {
 	// false is the expected answer on Linux and is not a degradation; it is
 	// the reason no exocomp socket may live where a job can name it.
 	PathnameSocketMediated bool
+	// ProxyEnforced is true when the canary also proved the denials with the
+	// filtering proxy in place of --block-net, the mode the dependency resolvers
+	// run in. It is separate from Enforced: a launcher whose proxy mode fails
+	// leaves every other job kind sandboxed, and only the resolvers refuse to run.
+	ProxyEnforced bool
+	// ProxyReason explains a failed proxy pass, and is empty when there was none.
+	ProxyReason string
 	// Reason explains a degradation, and is empty when there was none.
 	Reason string
 }
@@ -702,11 +771,15 @@ func Probe(ctx context.Context, want Tier, opts ProbeOptions) ProbeResult {
 		return res
 	}
 
-	report, err := runCanaryProbe(ctx, opts)
+	report, proxyErr, err := runCanaryProbe(ctx, opts)
 	if err != nil {
 		res.Reason = err.Error()
 		return res
 	}
+	if proxyErr != nil {
+		res.ProxyReason = proxyErr.Error()
+	}
+	res.ProxyEnforced = proxyErr == nil
 
 	res.Enforced = true
 	res.PathnameSocketMediated = strings.Contains(report, "pathname-socket=denied")
@@ -714,20 +787,22 @@ func Probe(ctx context.Context, want Tier, opts ProbeOptions) ProbeResult {
 	return res
 }
 
-// runCanaryProbe is the assertion itself. It returns the canary's report line.
-func runCanaryProbe(ctx context.Context, opts ProbeOptions) (string, error) {
+// runCanaryProbe is the assertion itself. It returns the canary's report line
+// for the port mode, which decides the tier, and the proxy mode's result apart,
+// which only the resolvers depend on.
+func runCanaryProbe(ctx context.Context, opts ProbeOptions) (report string, proxy, err error) {
 	canary := opts.Canary
 	if canary == "" {
 		self, err := os.Executable()
 		if err != nil {
-			return "", fmt.Errorf("cannot locate this executable to probe with: %w", err)
+			return "", nil, fmt.Errorf("cannot locate this executable to probe with: %w", err)
 		}
 		canary = self
 	}
 
 	root, err := os.MkdirTemp("", "exocomp-probe-")
 	if err != nil {
-		return "", fmt.Errorf("probe dir: %w", err)
+		return "", nil, fmt.Errorf("probe dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(root) }()
 
@@ -737,7 +812,7 @@ func runCanaryProbe(ctx context.Context, opts ProbeOptions) (string, error) {
 		AbstractSocket: fmt.Sprintf("exocomp-probe-%d", os.Getpid()),
 	}
 	if err := os.WriteFile(targets.KeyPath, []byte("probe-canary-not-a-real-key\n"), 0o600); err != nil {
-		return "", fmt.Errorf("probe key: %w", err)
+		return "", nil, fmt.Errorf("probe key: %w", err)
 	}
 
 	for _, l := range []struct{ network, address string }{
@@ -746,7 +821,7 @@ func runCanaryProbe(ctx context.Context, opts ProbeOptions) (string, error) {
 	} {
 		listener, err := net.Listen(l.network, l.address)
 		if err != nil {
-			return "", fmt.Errorf("probe socket %s: %w", l.address, err)
+			return "", nil, fmt.Errorf("probe socket %s: %w", l.address, err)
 		}
 		defer func() { _ = listener.Close() }()
 		go acceptUntilClosed(listener)
@@ -754,7 +829,7 @@ func runCanaryProbe(ctx context.Context, opts ProbeOptions) (string, error) {
 
 	tcp, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return "", fmt.Errorf("probe tcp listener: %w", err)
+		return "", nil, fmt.Errorf("probe tcp listener: %w", err)
 	}
 	defer func() { _ = tcp.Close() }()
 	go acceptUntilClosed(tcp)
@@ -762,17 +837,33 @@ func runCanaryProbe(ctx context.Context, opts ProbeOptions) (string, error) {
 
 	work := filepath.Join(root, "work")
 	if err := os.Mkdir(work, 0o700); err != nil {
-		return "", fmt.Errorf("probe work dir: %w", err)
+		return "", nil, fmt.Errorf("probe work dir: %w", err)
 	}
 
-	// The profile grants the work dir and the canary's own tool paths, and
-	// nothing else: root holds the fake key and the socket, so a grant one
-	// level up is exactly the mistake the probe exists to catch.
+	// The resolvers run in proxy mode, where nono supplies every network control
+	// once --block-net is gone, so the denials are asserted there as well. A
+	// failure is reported apart and never degrades the tier.
+	report, err = runCanary(ctx, opts, canary, work, targets, nil)
+	if err != nil {
+		return "", nil, err
+	}
+	if _, perr := runCanary(ctx, opts, canary, work, targets, []string{"example.invalid"}); perr != nil {
+		proxy = fmt.Errorf("proxy mode: %w", perr)
+	}
+	return report, proxy, nil
+}
+
+// runCanary runs the canary once under a profile that grants the work dir and
+// the canary's own tool paths, and nothing else: root holds the fake key and the
+// socket, so a grant one level up is exactly the mistake the probe exists to
+// catch. domains selects the proxy egress mode.
+func runCanary(ctx context.Context, opts ProbeOptions, canary, work string, targets CanaryTargets, domains []string) (string, error) {
 	profile := ProfileFor("probe", SandboxOptions{
-		Binary:     opts.Binary,
-		DataDir:    root,
-		ReadPaths:  toolDirs(canary),
-		WritePaths: []string{work},
+		Binary:       opts.Binary,
+		DataDir:      filepath.Dir(work),
+		ReadPaths:    toolDirs(canary),
+		WritePaths:   []string{work},
+		AllowDomains: domains,
 	})
 	argv := append([]string{canary}, opts.CanaryArgs...)
 	argv = append(argv, targets.KeyPath, targets.SocketPath, targets.AbstractSocket, targets.TCPAddr)
