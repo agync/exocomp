@@ -111,5 +111,26 @@ every request must carry the `metrics-scrape` bearer, a token
 derived from the envelope like the state backend's own (Decision 0004). Configure Prometheus
 with it as an `authorization` credential; an unauthenticated scrape is refused with `401`.
 
+The token is the base64 of the 32-byte subkey derived under the info string
+`metrics-scrape:`, an empty id. `exocomp doctor` does not print it, and `exocomp kit
+derive` cannot, because it takes `<purpose>/<id>` with a non-empty id. Derive it with the
+recovery card's hand chain. With a plaintext `host.key` in the data dir, the host key can
+unwrap the DEK in place of the recovery key. A host key held as a systemd credential or
+passphrase-wrapped is not an age identity file, so use the recovery key as the card does:
+
+```sh
+umask 077
+age -d -i host.key keyring.age > dek.bin
+hex() { od -An -tx1 -v | tr -d ' \n'; }
+openssl kdf -keylen 32 -kdfopt digest:SHA256 \
+  -kdfopt "hexkey:$(hex < dek.bin)" \
+  -kdfopt "hexsalt:$(printf 'exocomp/v1' | hex)" \
+  -kdfopt "hexinfo:$(printf 'metrics-scrape:' | hex)" \
+  -binary HKDF | base64
+```
+
+Store the result as a secret and delete `dek.bin`. A re-initialised data dir or a
+re-key changes every derived secret, so derive the token again.
+
 Related: [Reacting to alerts](reactive.md) · [LAN access](lan-access.md) ·
 [Disaster recovery](disaster-recovery.md).

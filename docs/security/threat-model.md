@@ -220,7 +220,7 @@ Endpoints and listeners the daemon exposes on the LAN/tailnet.
 | id | threat | mitigation in place |
 |---|---|---|
 | T13 | Pre-auth argon2id memory-amplification DoS on the web `/login` and bearer endpoints. | A KDF concurrency gate (global ceiling plus per-source in-flight cap) sheds a pre-auth flood with 503 having run no argon2id; a real login still succeeds. |
-| T14 | An unauthenticated `/metrics` on the state-backend listener is reachable by tofu-tier jobs. | `/metrics` is bearer-gated with an envelope-derived scrape token, compared constant-time, failing closed when no deriver is present; `doctor` presents the token. |
+| T14 | An unauthenticated `/metrics` on the state-backend listener is reachable by tofu-tier jobs. | `/metrics` is bearer-gated with an envelope-derived scrape token, compared constant-time, failing closed when no deriver is present; `doctor` sends the token to its own probe, and no command prints it. |
 
 **Accepted residuals.**
 
