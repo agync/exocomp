@@ -8,6 +8,10 @@ Newest first.
 
 ## 2026-10-21
 
+- **Local-run notice documented.** [Remote access](operations/remote-access.md) shows the
+  line a bare `playbook run` or `workspace plan`, `apply` or `destroy` prints when it runs
+  locally while a default remote is stored.
+
 - **Identity grant guard corrected.** [The serve page](operations/serve.md) and
   [sources](operations/sources.md) said a `--ssh-identity` path covering the data dir is
   refused. The guard refuses the data dir, its ancestors and its named state files, so a key
