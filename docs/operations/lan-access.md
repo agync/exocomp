@@ -26,7 +26,9 @@ exists.
 
 ## Minting and managing tokens
 
-Tokens are minted only from the box (the data dir is the root of trust):
+Tokens are minted only from the box (the data dir is the root of trust). For a container
+the box is the container, so run these as `podman exec exocomp exocompd token new ...`
+([containers](containers.md)):
 
 ```
 exocomp token new laptop --scope operator --expires 720h

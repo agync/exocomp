@@ -28,8 +28,10 @@ Environment=EXOCOMP_IMAGE=ghcr.io/agync/exocomp:latest
 # The web surface is token-gated (Decision 0009) and serve REFUSES a
 # non-loopback bind with no active token, so mint the first one before the first
 # start — a unit that binds without it would crash-loop on Restart=always:
-#   podman run --rm -v exocomp.volume:/var/lib/exocomp \
+#   podman run --rm --userns keep-id -v systemd-exocomp:/var/lib/exocomp \
 #     ghcr.io/agync/exocomp:latest --no-input token new web
+# (exocomp.volume only names the volume inside a Quadlet. podman run needs the
+# generated name, and the volume exists once exocomp-volume.service has started.)
 # Inside the container the web surface must bind 0.0.0.0 to be reachable through
 # the published port, and --port keeps the state/API backend on loopback.
 PublishPort=127.0.0.1:8642:8642
