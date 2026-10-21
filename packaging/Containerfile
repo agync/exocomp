@@ -100,7 +100,9 @@ RUN gitver="$(git --version | awk '{print $3}')" \
     && sed -i "s/\"git\": \"\"/\"git\": \"$gitver\"/" /opt/exocomp/MANIFEST.json
 
 ENV PATH=/opt/exocomp/bin:/usr/local/bin:/usr/bin:/bin \
-    EXOCOMP_TOOLCHAIN_MANIFEST=/opt/exocomp/MANIFEST.json
+    EXOCOMP_TOOLCHAIN_MANIFEST=/opt/exocomp/MANIFEST.json \
+    UV_PYTHON_INSTALL_DIR=/opt/exocomp/python \
+    UV_PYTHON_DOWNLOADS=manual
 
 RUN mkdir -p /var/lib/exocomp /home/exocomp \
     && chown 1000:1000 /var/lib/exocomp /home/exocomp \
