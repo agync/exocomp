@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-10-22
 
+- **Ping checks on by default in the units.** [Containers](operations/containers.md#ping-checks)
+  says the shipped Quadlet and compose units set `ping_group_range` to the image's gid, why
+  that value holds under `UserNS=keep-id`, and that `Network=host` drops the line.
+  [Check-triggered runs](design/check-triggered-runs.md) points there.
+
 - **Ping in the image documented.** [Containers](operations/containers.md) lists `ping` among
   what the base image carries and says which network setups let the daemon send ICMP, and
   [the bill of materials](sbom/bill-of-materials.md) adds `iputils`. [Check-triggered

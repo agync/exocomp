@@ -338,8 +338,8 @@ depends on `ping_group_range` covering the daemon's gid, and the image ships no
 setuid or capability helper for it. `check add --kind ping` runs a loopback ping
 and is refused loudly on a host that cannot send ICMP, the same
 assert-don't-assume posture `sandbox.go Probe` holds.
-[Containers](../operations/containers.md#ping-checks) covers the container's
-network namespace.
+The shipped container units set the range for the image's gid
+([containers](../operations/containers.md#ping-checks)).
 
 `http` records **status only, never the body** (AGENTS.md 4): a health endpoint's
 response is not evidence this code should persist.
