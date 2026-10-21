@@ -95,9 +95,9 @@ The state backend and `/metrics` on `:8643` bind the container's own loopback, w
 published port does not reach. Under rootless podman 5.8 with pasta the connection to
 `127.0.0.1:8643` on the host is accepted and then reset. Reach them from inside the
 container, or run the container with `Network=host`. The host's loopback is then the
-container's. Drop the `PublishPort=` lines and bind the web surface to `127.0.0.1:8642`
-in the `Exec=` line, as the host service does, because `0.0.0.0` would then be every
-host interface.
+container's. Drop the `PublishPort=` and `Sysctl=` lines ([ping checks](#ping-checks)) and
+bind the web surface to `127.0.0.1:8642` in the `Exec=` line, as the host service does,
+because `0.0.0.0` would then be every host interface.
 
 ## Running commands against the container
 
@@ -134,8 +134,8 @@ A job reaches the host the container runs on the way it reaches any other target
 A local connection would run `become` inside the sandbox, which denies it, and the container
 does not see the host's files. The host runs sshd, and the container connects to it on
 loopback. That needs `Network=host`, because under the shipped unit's network `127.0.0.1`
-in the container is the container's own loopback. Drop the `PublishPort=` lines and bind
-the web surface to `127.0.0.1:8642` as [reaching the web surface](#reaching-the-web-surface)
+in the container is the container's own loopback. Drop the `PublishPort=` and `Sysctl=` lines
+and bind the web surface to `127.0.0.1:8642` as [reaching the web surface](#reaching-the-web-surface)
 describes, or it listens on every host interface.
 
 - **The key.** Generate a key pair for the daemon on the host, outside the data volume, and
@@ -215,20 +215,27 @@ the inventory an `ansible_host` that is an address.
 
 `ping` checks and the `ping` verify gates of a workflow run the image's `ping` from the
 daemon, with no capability. The kernel allows that when the network namespace's
-`net.ipv4.ping_group_range` covers the gid the daemon runs as, which `id -g` in the
-container prints. With `Network=host` the host's range applies, and
-systemd's default covers every group. Under the shipped unit's own network namespace podman
-sets the range to `0 0`, so the daemon cannot open an ICMP socket and
-`check add --kind ping` refuses. Widen the range in the unit:
+`net.ipv4.ping_group_range` covers the gid the daemon runs as. Podman sets the range to
+`0 0` in a container's own network namespace, so both shipped units set it to the image's
+gid:
 
 ```
-Sysctl="net.ipv4.ping_group_range=<gid> <gid>"
+Sysctl="net.ipv4.ping_group_range=1000 1000"
 ```
 
-Keep the quotes, or Quadlet splits the value at the space. Compose takes the same key
-under `sysctls:`. The range only applies inside the container's network namespace, and a
-sandboxed job still cannot open an ICMP socket, because nono refuses it whatever the range.
-A `tcp` check needs neither.
+That is the group of `USER 1000:1000`. `UserNS=keep-id` keeps the image's user and adds the
+host user's group as a supplementary one, so the value does not depend on the host, and a
+derived image keeps it by keeping that user. Keep the quotes, or Quadlet splits the value at
+the space. Compose sets the same key under `sysctls:`.
+
+With `Network=host` the host's range applies, and systemd's default covers every group.
+Podman refuses a network sysctl in the host's namespace and the container does not start,
+so drop the `Sysctl=` line along with the `PublishPort=` lines. Under compose with
+`network_mode: host`, drop `sysctls:` along with `ports:`.
+
+The range only applies inside the container's network namespace, and a sandboxed job still
+cannot open an ICMP socket, because nono refuses it whatever the range. A `tcp` check needs
+neither.
 
 ## Ansible's remote temp
 
