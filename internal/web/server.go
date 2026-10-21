@@ -90,6 +90,10 @@ type Options struct {
 	DataDir string
 	Logger  *slog.Logger
 	Clock   func() time.Time
+
+	// SSHIdentityAllow are the ssh identity files a playbook run enqueued on
+	// this face may ask to read, validated by serve. Empty refuses every ask.
+	SSHIdentityAllow []string
 }
 
 // Server is the browser UI and phone approval surface. It reads the store
@@ -108,6 +112,8 @@ type Server struct {
 	fingerprint string
 	version     string
 	dataDir     string
+	// sshIdentityAllow is Options.SSHIdentityAllow.
+	sshIdentityAllow []string
 	// base is the normalized --base-path the surface is served under; "" is
 	// the origin root. Inbound requests have it stripped and outbound URLs
 	// re-prefix it.
@@ -225,6 +231,7 @@ func New(opts Options) (*Server, error) {
 		fingerprint:            opts.Fingerprint,
 		version:                opts.Version,
 		dataDir:                opts.DataDir,
+		sshIdentityAllow:       opts.SSHIdentityAllow,
 		base:                   base,
 		log:                    log,
 		clock:                  clock,

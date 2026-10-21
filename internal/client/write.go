@@ -174,6 +174,9 @@ type PlaybookRequest struct {
 	// top of the ansible kind's SSH port 22, for an inventory host on a
 	// nonstandard port. Empty is the default posture: no widening.
 	EgressPorts []int `json:"egress_ports,omitempty"`
+	// SSHIdentityFiles are ssh identity key files on the daemon the run may
+	// read. The daemon refuses any its operator did not allow.
+	SSHIdentityFiles []string `json:"ssh_identity_files,omitempty"`
 	// IdempotencyKey travels as a header, not a body field.
 	IdempotencyKey string `json:"-"`
 }

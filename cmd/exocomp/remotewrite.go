@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -196,6 +197,9 @@ type remotePlaybookOp struct {
 	// egressPorts are the validated outbound TCP ports the daemon should grant
 	// the run on top of the ansible kind's SSH port 22.
 	egressPorts []int
+	// sshIdentity are the --ssh-identity values as given: paths on the daemon,
+	// which the daemon checks against the files its operator allowed.
+	sshIdentity []string
 }
 
 // runRemotePlaybook enqueues a playbook on the remote daemon and, unless
@@ -208,6 +212,12 @@ func runRemotePlaybook(cmd *cobra.Command, rc *client.Client, op remotePlaybookO
 	}
 	if err := remoteRunGuards(op.playbook, op.inventory, op.extraVars, op.source, op.wait); err != nil {
 		return 0, err
+	}
+	for _, id := range op.sshIdentity {
+		if !filepath.IsAbs(id) {
+			return 0, fmt.Errorf("playbook run: --ssh-identity %q is not absolute, "+
+				"and with --remote it names a path on the daemon", id)
+		}
 	}
 
 	req := client.PlaybookRequest{
@@ -226,6 +236,7 @@ func runRemotePlaybook(cmd *cobra.Command, rc *client.Client, op remotePlaybookO
 		IdempotencyKey:      op.idempotencyKey,
 		Runner:              op.runnerName,
 		EgressPorts:         op.egressPorts,
+		SSHIdentityFiles:    op.sshIdentity,
 	}
 	if op.timeout > 0 {
 		req.Timeout = op.timeout.String()

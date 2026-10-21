@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -100,22 +101,18 @@ func TestPlaybookRunSSHIdentityFilesReachJobRow(t *testing.T) {
 	}
 }
 
-// TestPlaybookRunRemoteSSHIdentityRefused: a remote run cannot declare an
-// identity file, because the daemon resolves paths on its own host and this
-// face does not offer the grant yet. The refusal is loud, never a silent drop.
-func TestPlaybookRunRemoteSSHIdentityRefused(t *testing.T) {
-	withConfigHome(t)
-	cfg := hostsConfig{Default: "box", Hosts: map[string]hostEntry{
-		"box": {Endpoint: "https://127.0.0.1:1", Fingerprint: "aa:bb:cc:dd", Token: "t"},
-	}}
-	if err := saveHostsConfig(cfg); err != nil {
-		t.Fatal(err)
-	}
+// TestPlaybookRunRemoteRelativeSSHIdentityRefused: a remote run's identity is
+// a path on the daemon, so a relative one is refused before any request,
+// rather than absolutized against this machine's working directory.
+func TestPlaybookRunRemoteRelativeSSHIdentityRefused(t *testing.T) {
+	pinnedRemote(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("a relative remote identity must not reach the daemon")
+	}))
 
-	_, _, err := runRoot(t, []string{"playbook", "run", "site.yml",
-		"--remote", "box", "--ssh-identity", "/keys/lima"})
+	_, _, err := runRoot(t, []string{"playbook", "run", "site.yml", "--source", "demo",
+		"--remote", "box", "--ssh-identity", "keys/lima"})
 	if err == nil {
-		t.Fatalf("a remote run accepted --ssh-identity")
+		t.Fatalf("a remote run accepted a relative --ssh-identity")
 	}
 	if !strings.Contains(err.Error(), "ssh-identity") {
 		t.Errorf("remote refusal = %v, want it to name --ssh-identity", err)

@@ -140,6 +140,7 @@ type serveOptions struct {
 	basePath       string
 	sandbox        string
 	resolverHosts  []string
+	identityAllow  []string
 	webAddr        string
 	webInsecure    bool
 	secretStaging  string
@@ -199,6 +200,9 @@ func newServeCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.resolverHosts, "resolver-allow-domain", nil,
 		"extra package index host the dependency resolvers may reach through the sandbox proxy (repeatable), "+
 			"beyond pypi.org, files.pythonhosted.org and the Ansible Galaxy hosts")
+	cmd.Flags().StringArrayVar(&opts.identityAllow, "allow-ssh-identity", nil,
+		"an ssh identity key file a playbook run enqueued through /api/v1 may ask to read (repeatable), "+
+			"one regular file outside the data dir, never a directory")
 	cmd.Flags().StringVar(&opts.sandbox, "sandbox", "",
 		"job isolation tier: opportunistic, enforcing, or disabled (default: $"+sandboxTierEnv+", else enforcing)")
 	cmd.Flags().DurationVar(&opts.leaseTTL, "lease-ttl", opts.leaseTTL,
@@ -269,6 +273,10 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	}
 	if err := configureResolverHosts(opts.resolverHosts); err != nil {
 		return fmt.Errorf("serve: %w", err)
+	}
+	identityAllow, err := executor.NormalizeIdentityAllowlist(dir, opts.identityAllow)
+	if err != nil {
+		return fmt.Errorf("serve: --allow-ssh-identity: %w", err)
 	}
 	if err := enforceSandboxTier(ctx); err != nil {
 		return fmt.Errorf("serve: %w", err)
@@ -484,7 +492,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// loopback state backend above stays loopback-only and takes no LAN token.
 	var surface *webSurface
 	if opts.webAddr != "" {
-		surface, err = startWebSurface(ctx, st, env, dir, engine, cordon, newNtfySeam(st, env), opts.basePath, opts.webAddr, opts.webInsecure, warn)
+		surface, err = startWebSurface(ctx, st, env, dir, engine, cordon, newNtfySeam(st, env), opts.basePath, opts.webAddr, opts.webInsecure, identityAllow, warn)
 		if err != nil {
 			shutdownCtx, cancel := context.WithTimeout(finalCtx, shutdownGrace)
 			defer cancel()

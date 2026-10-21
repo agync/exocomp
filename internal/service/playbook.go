@@ -52,7 +52,9 @@ type PlaybookInput struct {
 	// SSHIdentityFiles are single ssh identity key files this run may read on
 	// top of the files its kind grants, so a play can load a key stored outside
 	// the source checkout. Empty is the default posture: no declaration, no
-	// widening.
+	// widening. This verb trusts the paths it is given. A face whose caller
+	// names paths on a host it does not control checks them against serve
+	// --allow-ssh-identity first, as POST /api/v1/playbooks/run does.
 	SSHIdentityFiles []string
 	// Actor identifies a non-CLI caller (an API token) for the job's event
 	// ledger; the zero value records nothing (see recordActor).

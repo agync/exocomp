@@ -318,6 +318,28 @@ func TestRemotePlaybookRunCarriesEgressPorts(t *testing.T) {
 	}
 }
 
+// TestRemotePlaybookRunCarriesSSHIdentity: --ssh-identity on a remote run
+// travels as ssh_identity_files, unchanged, for the daemon to check against
+// the files its operator allowed.
+func TestRemotePlaybookRunCarriesSSHIdentity(t *testing.T) {
+	stub := &writeAPIStub{}
+	pinnedRemote(t, stub.handler(t))
+
+	_, _, err := runRoot(t, []string{
+		"--remote", "box", "playbook", "run", "site.yml", "--source", "demo",
+		"--no-follow", "--ssh-identity", "/run/keys/fleet/id_ed25519",
+	})
+	if err != nil {
+		t.Fatalf("remote playbook run: %v", err)
+	}
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	ids, ok := stub.runBody["ssh_identity_files"].([]any)
+	if !ok || len(ids) != 1 || ids[0] != "/run/keys/fleet/id_ed25519" {
+		t.Fatalf("ssh_identity_files = %v, want [/run/keys/fleet/id_ed25519]", stub.runBody["ssh_identity_files"])
+	}
+}
+
 // TestRemoteWorkspaceDestroyEnqueues: `workspace destroy` is the scriptable twin
 // of the destroy write route — it POSTs the run-secrets/timeout/runner body to
 // /api/v1/workspaces/{name}/destroy and prints the enqueued job id.
