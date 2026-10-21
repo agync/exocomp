@@ -435,8 +435,9 @@ func TestSandboxReadOnlyDirGrant(t *testing.T) {
 }
 
 // TestAnsibleScratchEnvRedirectsOffTheSourceTree proves the sandboxed ansible
-// run's temp, remote-temp and ssh ControlPath directory all resolve inside the
-// per-job granted tree and never under the run's working directory. That is
+// run's temp and ssh ControlPath directory resolve inside the per-job granted
+// tree and never under the run's working directory, and that remote temp
+// resolves there too when the connection is local. That is
 // what makes a read-only source checkout as cwd safe: even if the checkout's
 // ansible.cfg sets a relative local_tmp or control_path_dir, these env vars win
 // and the writes land somewhere the sandbox granted, not on the read-only tree.
@@ -467,7 +468,7 @@ func TestAnsibleScratchEnvRedirectsOffTheSourceTree(t *testing.T) {
 	// Every path ansible writes temp to has to be granted and writable, so it
 	// must live under a job grant, and never under the source checkout.
 	granted := []string{job.private, job.work, job.tmp} // jobDir.grants()
-	for _, key := range []string{"ANSIBLE_LOCAL_TEMP", "ANSIBLE_REMOTE_TMP", "ANSIBLE_SSH_CONTROL_PATH_DIR", "TMPDIR"} {
+	for _, key := range []string{"ANSIBLE_LOCAL_TEMP", "ANSIBLE_SSH_CONTROL_PATH_DIR", "TMPDIR"} {
 		val, ok := get(key)
 		if !ok {
 			t.Errorf("%s not set", key)
@@ -490,6 +491,28 @@ func TestAnsibleScratchEnvRedirectsOffTheSourceTree(t *testing.T) {
 	// and it is the granted directory the caller passed.
 	if val, _ := get("ANSIBLE_SSH_CONTROL_PATH_DIR"); val != controlPath {
 		t.Errorf("ANSIBLE_SSH_CONTROL_PATH_DIR=%q, want the granted control path %q", val, controlPath)
+	}
+
+	// Remote temp is made on the far side of the connection, so it names no
+	// controller path. A local connection's shell expands it with the job's
+	// HOME, which must land in the granted ~/.ansible.
+	remote, ok := get("ANSIBLE_REMOTE_TMP")
+	if !ok {
+		t.Fatal("ANSIBLE_REMOTE_TMP not set")
+	}
+	if strings.Contains(remote, "/jobs/") {
+		t.Errorf("ANSIBLE_REMOTE_TMP=%q names a controller path an ssh target lacks", remote)
+	}
+	home, _ := get("HOME")
+	local := os.Expand(remote, func(k string) string {
+		if k == "HOME" {
+			return home
+		}
+		return ""
+	})
+	if ansibleHome := filepath.Dir(controlPath); !strings.HasPrefix(local, ansibleHome+"/") {
+		t.Errorf("ANSIBLE_REMOTE_TMP=%q expands locally to %q, not under the granted %q",
+			remote, local, ansibleHome)
 	}
 }
 

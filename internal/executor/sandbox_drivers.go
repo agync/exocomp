@@ -328,18 +328,31 @@ func collectionsReadGrants(collectionsPath string) []string {
 	return strings.Split(collectionsPath, string(os.PathListSeparator))
 }
 
-// ansibleScratchEnv redirects every scratch path an ansible run writes into the
-// per-job granted tree: local and remote temp, the ssh ControlPath directory,
-// TMPDIR, and HOME. Each target is a child of the job dir the sandbox grants
-// writable (job.tmp and job.home, plus controlPath under the granted
-// ~/.ansible), and none is under the run's working directory — so when that
-// working directory is a read-only source checkout, a relative local_tmp or
-// control_path_dir in the checkout's ansible.cfg cannot force a write onto the
-// read-only tree: these env vars take precedence over ansible.cfg.
+// remoteTmp is ansible's remote temp, left for the shell on the far side of
+// the connection to expand. The directory is made on the host the connection
+// reaches, so a controller path such as the job dir does not exist on an ssh
+// target, and a target user cannot create it. ansible's default ~/.ansible/tmp
+// fails the other way: for a local connection ansible expands ~ to the passwd
+// home of the user, not $HOME, and the sandbox never grants that home (a
+// keep-id container user has / there). The shell expands $HOME to the target
+// user's home over ssh, and to the job's redirected HOME locally, whose
+// .ansible directory is granted.
+const remoteTmp = "$HOME/.ansible/tmp"
+
+// ansibleScratchEnv redirects every scratch path an ansible run writes on the
+// controller into the per-job granted tree: local temp, the ssh ControlPath
+// directory, TMPDIR, and HOME. Each target is a child of the job dir the
+// sandbox grants writable (job.tmp and job.home, plus controlPath under the
+// granted ~/.ansible), and none is under the run's working directory — so when
+// that working directory is a read-only source checkout, a relative local_tmp
+// or control_path_dir in the checkout's ansible.cfg cannot force a write onto
+// the read-only tree: these env vars take precedence over ansible.cfg. Remote
+// temp is pinned to remoteTmp so a remote_tmp in the checkout's ansible.cfg
+// cannot do the same to a local connection.
 func ansibleScratchEnv(job jobDir, controlPath string) []string {
 	return []string{
 		"ANSIBLE_LOCAL_TEMP=" + job.tmp,
-		"ANSIBLE_REMOTE_TMP=" + job.tmp,
+		"ANSIBLE_REMOTE_TMP=" + remoteTmp,
 		"ANSIBLE_SSH_CONTROL_PATH_DIR=" + controlPath,
 		"TMPDIR=" + job.tmp,
 		"HOME=" + job.home,
