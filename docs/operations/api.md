@@ -296,7 +296,9 @@ its own poll.
   that claims the row decrypts it into a run-private plaintext for that one run — this
   pure-enqueue face never leaves a plaintext plan in the shared data dir.
 - **`POST /playbooks/run`** — body `{playbook, inventory, vault_project, run_secrets,
-  source, limit, tags, skip_tags, check, diff, extra_vars, tolerate_unreachable, timeout}`.
+  source, limit, tags, skip_tags, check, diff, extra_vars, tolerate_unreachable, timeout,
+  ssh_identity_files}`. Each `ssh_identity_files` entry must be a file
+  the daemon's operator allowed with `serve --allow-ssh-identity`, or the request is a `400`.
   `inventory` and `source` names resolve through the same service resolvers the CLI uses. A
   `source` whose checkout declares `.exocomp/hooks.yml` is refused with `501` — that
   lifecycle is a composed workflow the CLI owns, not one queued play, and is not offered on

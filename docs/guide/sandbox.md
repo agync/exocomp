@@ -43,7 +43,8 @@ the container is not refused, and a job can reach it.
 Two opt-in grants widen the profile without weakening it:
 
 - `--ssh-identity <path>` (repeatable) grants read access to **one file** — an SSH
-  identity key — never its directory.
+  identity key — never its directory. A `--remote` run may name only files the daemon's
+  operator allowed with `serve --allow-ssh-identity`.
 - `--source` grants the checkout as the working directory (read, or read+write for a
   writable checkout).
 

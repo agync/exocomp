@@ -263,6 +263,13 @@ Endpoints and listeners the daemon exposes on the LAN/tailnet.
   binary does mint, but a job reaching it is the local-exec vector above, not an HTTP path.)
 - **Hook allowlist behind proxy —** the `--hook-allow` CIDR allowlist is nullified behind a
   reverse proxy that sets X-Forwarded-For. Documented limitation.
+- **Remote identity grants.** An operator-scope token can ask a playbook run to read an ssh
+  identity file on the daemon's host. The daemon grants only files its operator listed with
+  `serve --allow-ssh-identity`, each a regular file outside the data dir and the paths that
+  unwrap the DEK, checked at start and on every request, so a token cannot name an
+  arbitrary path. Any operator-scope token can use every listed key for any run it
+  enqueues, and the playbook it runs can read that key, so list only keys meant for the
+  fleet the daemon already manages, and keep them on a read-only mount.
 
 ## Outbound push endpoints (SSRF)
 
