@@ -84,7 +84,7 @@ ride in the same snapshot, which is what makes an offline restore possible.
 |---|---|
 | NAS | `restic` to a local repository on the SMB/NFS mount, after asserting mountpoint, canary file, and free space |
 | S3-compatible | `restic` to an `s3:` repository. Credentials resolve from sealed secret rows `s3/<target>/access-key-id` and `s3/<target>/secret-access-key` (optionally `.../region`, `.../session-token`) when both required rows are sealed; otherwise the leg falls back to the process environment and logs a warning — it never fails silently on a missing sealed credential |
-| private GitHub repo | tar+zstd of the staging tree, `age`-encrypted, pushed as a **single orphan commit, force-pushed** to a rolling ref window, chunked into 90 MB `.age.partNN` parts with a `sha256` parts manifest (`internal/backup/chunk.go`) that carries its own `.mac` — it is the one file a chunked snapshot exposes outside the age envelope. The leg refuses loudly before pushing if the bare repository's `objects` directory already exceeds 4 GB |
+| private GitHub repo | tar of the staging tree, compressed with `zstd` when it is on PATH (the image carries it) and with gzip otherwise, `age`-encrypted, pushed as a **single orphan commit, force-pushed** to a rolling ref window, chunked into 90 MB `.age.partNN` parts with a `sha256` parts manifest (`internal/backup/chunk.go`) that carries its own `.mac` — it is the one file a chunked snapshot exposes outside the age envelope. The leg refuses loudly before pushing if the bare repository's `objects` directory already exceeds 4 GB |
 
 One leg failing does not abort the others; each gets its own `backup_run` row and its own
 alert. A target that fails twice consecutively raises a `critical` notification. The
@@ -232,7 +232,10 @@ host reached only over the network, for instance.
 ## The recovery card
 
 The card is the manual path: the same chain with no exocomp binary anywhere in it, using
-only `age`, `openssl`, and `restic`.
+only `age`, `openssl`, and `restic`. A git target's card uses `git`, `age` and `zstd`
+instead, or `gzip` for a `.tar.gz` snapshot. `exocomp restore` from a git target also
+shells out to `zstd` for a `.tar.zst` snapshot and refuses when it is not on PATH, so a
+recovery host without the image needs `zstd` installed.
 
 **The card's literal command text is a build artifact, not documentation.** It is rendered
 by the kit renderer, and the exact rendered text is **executed in CI** on a clean image
@@ -272,7 +275,7 @@ database has no recovery-kind keyring row.
 | Recovery kit lost **and** host key lost | Unrecoverable, by design; the same property any real vault has |
 | DB corrupt, backups fine | `exocomp restore --from <kind:uri> --dest <fresh data dir>` restores the newest snapshot — for a restic kind, an older one by id with `--snapshot <id>` (full or unambiguous prefix; a git target keeps exactly one snapshot, so it has no selector). It refuses a destination that already holds a keyring. There is no in-place restore and no startup `PRAGMA integrity_check` gate |
 | One backup target unreachable | Others proceed and each gets its own `backup_run` row; there is no per-target alerting or last-success-age view in `doctor` |
-| `exocompd` will not build or run at all | The card's manual path uses only `age`, `openssl`, and `restic`. The bundles are plain git bundles and `exocomp.db` is plain SQLite |
+| `exocompd` will not build or run at all | The card's manual path uses only `age`, `openssl`, and `restic`, or `git`, `age` and `zstd` for a git target. The bundles are plain git bundles and `exocomp.db` is plain SQLite |
 
 ## RPO and RTO
 

@@ -8,6 +8,12 @@ Newest first.
 
 ## 2026-10-22
 
+- **zstd in the image documented.** [Disaster recovery](operations/disaster-recovery.md)
+  says the git leg compresses with zstd when it is on PATH and with gzip otherwise, and that
+  restoring a `.tar.zst` snapshot needs `zstd`, by hand or through `exocomp restore`.
+  [Containers](operations/containers.md) and [the bill of materials](sbom/bill-of-materials.md)
+  list it.
+
 - **Ping checks on by default in the units.** [Containers](operations/containers.md#ping-checks)
   says the shipped Quadlet and compose units set `ping_group_range` to the image's gid, why
   that value holds under `UserNS=keep-id`, and that `Network=host` drops the line.
