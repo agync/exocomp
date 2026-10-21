@@ -12,7 +12,7 @@ tags: [decision, backup, replication]
 
 Accepted · 2026-08-22 — complements the restic DR chain in
 [operations/disaster-recovery.md](../operations/disaster-recovery.md); does not
-supersede it.
+supersede it. Amended 2026-10-22 to ship the binary in the image (see the addendum).
 
 ## Context
 
@@ -100,3 +100,16 @@ seconds-level RPO — the fast-RPO complement to restic, never its replacement.*
   (`internal/litestream.RestoreArgs`) exists for catching a replica up, but the
   authoritative "control host is gone" runbook is unchanged: it derives the restic
   password from the DEK and restores the encrypted chain.
+
+## Addendum of 2026-10-22, the binary in the image
+
+The base image carries `litestream`, pinned and sha256-checked like restic and tofu
+([bill of materials](../sbom/bill-of-materials.md)). `exocomp restore --from-litestream`
+shells it, and without it in the image that command refused in the container. A sidecar
+could write a replica that the container could not read back.
+
+The sidecar decision stands. `exocompd` does not run the replication process, replication
+stays off until the operator starts `litestream replicate` against the generated config,
+and restic stays the authoritative chain. What changes is the install step. On the shipped
+image there is none. On a host install outside the image the binary is still the
+operator's to add, which `exocomp doctor` names. The binary adds about 39 MB to the image.
