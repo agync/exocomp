@@ -21,6 +21,8 @@ Volume=%t/credentials/exocomp.service:/run/credentials/exocomp.service:ro,Z
 Environment=CREDENTIALS_DIRECTORY=/run/credentials/exocomp.service
 # Rootless keep-id posture; per-job caps stay off (byo-runner.md).
 UserNS=keep-id
+# For ping checks, with the daemon's gid (containers.md, Ping checks):
+#Sysctl="net.ipv4.ping_group_range=<gid> <gid>"
 # Staged secrets live in /dev/shm; no Tmpfs= mount (breaks rootless startup).
 Environment=XDG_DATA_HOME=/var/lib
 # Recorded by the daemon for the recovery chain (Decision 0016).
