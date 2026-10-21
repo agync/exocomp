@@ -68,6 +68,20 @@ func remoteClient(cmd *cobra.Command) (*client.Client, bool, error) {
 	return c, true, nil
 }
 
+// noteLocalRun tells the operator that a job is about to run on this machine
+// although hosts.toml names a default remote. A bare command never uses that
+// default, so without the line a run meant for the daemon executes here with no
+// sign of it. An unreadable hosts.toml prints nothing: the run does not need it.
+func noteLocalRun(cmd *cobra.Command) {
+	cfg, err := loadHostsConfig()
+	if err != nil || cfg.Default == "" {
+		return
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+		"running on this machine, not on the default remote %q (pass --remote= to run there)\n",
+		cfg.Default)
+}
+
 // selectedRemote returns the remote selector and whether remote mode is active.
 // Precedence: --remote flag, then EXOCOMP_REMOTE. The hosts.toml default is NOT
 // consulted here — it only fills a valueless --remote, downstream — so a bare
