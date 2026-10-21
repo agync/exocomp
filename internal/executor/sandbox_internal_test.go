@@ -540,3 +540,70 @@ func TestCollectionsReadGrantsSplitsOnPathSeparator(t *testing.T) {
 		}
 	}
 }
+
+// TestPythonInstallGrants: the managed-Python install dir is granted when uv is
+// configured with an existing absolute one outside the data dir. Every nono
+// grant is recursive, so a value that is, holds or sits inside the data dir
+// grants nothing instead of exposing job dirs and keys.
+func TestPythonInstallGrants(t *testing.T) {
+	target := t.TempDir()
+	link := filepath.Join(t.TempDir(), "python")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	data := t.TempDir()
+	if err := os.Mkdir(filepath.Join(data, "run"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dataLink := filepath.Join(t.TempDir(), "data")
+	if err := os.Symlink(data, dataLink); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		env  string
+		want []string
+	}{
+		{"unset", "", nil},
+		{"relative", "python", nil},
+		{"missing", filepath.Join(target, "absent"), nil},
+		{"a file, not a directory", file, nil},
+		{"a directory", target, []string{resolved}},
+		{"a symlinked directory grants its target", link, []string{resolved}},
+		{"the data dir itself", data, nil},
+		{"inside the data dir", filepath.Join(data, "run"), nil},
+		{"a parent of the data dir", filepath.Dir(data), nil},
+		{"a symlink to the data dir", dataLink, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(PythonInstallEnv, tc.env)
+			if got := PythonInstallGrants(data); !slices.Equal(got, tc.want) {
+				t.Errorf("PythonInstallGrants() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("an unknown data dir grants nothing", func(t *testing.T) {
+		t.Setenv(PythonInstallEnv, target)
+		if got := PythonInstallGrants(""); got != nil {
+			t.Errorf("PythonInstallGrants(\"\") = %v, want nil", got)
+		}
+	})
+	t.Run("a relative data dir is compared as the absolute path", func(t *testing.T) {
+		t.Chdir(filepath.Dir(data))
+		t.Setenv(PythonInstallEnv, filepath.Join(data, "run"))
+		if got := PythonInstallGrants(filepath.Base(data)); got != nil {
+			t.Errorf("PythonInstallGrants(relative) = %v, want nil", got)
+		}
+	})
+}

@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -219,5 +222,36 @@ func TestOpportunisticTierDegradesWithoutRefusing(t *testing.T) {
 
 	if err := enforceSandboxTier(context.Background()); err != nil {
 		t.Fatalf("opportunistic tier refused to degrade: %v", err)
+	}
+}
+
+// TestSandboxOptionsCarryThePythonInstallDir: every kind starts from the grant
+// set that names the tool trees, and the interpreter those trees point back
+// into is part of it. A value inside the data dir is dropped rather than
+// handed to every job.
+func TestSandboxOptionsCarryThePythonInstallDir(t *testing.T) {
+	python := t.TempDir()
+	data := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(python)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	t.Setenv(executor.PythonInstallEnv, python)
+	if got := sandboxOptions(data).ReadPaths; !slices.Contains(got, resolved) {
+		t.Errorf("read grants %v lack the Python install dir %s", got, resolved)
+	}
+
+	inside := filepath.Join(data, "run")
+	if err := os.Mkdir(inside, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv(executor.PythonInstallEnv, inside)
+	insideResolved, err := filepath.EvalSymlinks(inside)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if got := sandboxOptions(data).ReadPaths; slices.Contains(got, inside) || slices.Contains(got, insideResolved) {
+		t.Errorf("read grants %v reach inside the data dir via %s", got, inside)
 	}
 }

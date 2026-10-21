@@ -282,6 +282,7 @@ func sandboxOptions(dataDir string) executor.SandboxOptions {
 	for _, t := range optionalTools {
 		read = append(read, executor.ToolGrants(t.name)...)
 	}
+	read = append(read, executor.PythonInstallGrants(dataDir)...)
 	return executor.SandboxOptions{DataDir: dataDir, ReadPaths: read}
 }
 
@@ -444,6 +445,14 @@ func reportSandbox(ctx context.Context, w io.Writer) {
 		p("  %-18s not run — %s tier requested\n", "probe", executor.TierDisabled)
 	default:
 		p("  %-18s DEGRADED to %s: %s\n", "probe", executor.TierDisabled, res.Reason)
+	}
+	if want := os.Getenv(executor.PythonInstallEnv); want != "" {
+		dd, _ := dataDir()
+		if grants := executor.PythonInstallGrants(dd); len(grants) > 0 {
+			p("  %-18s %s (read-only)\n", "managed python", grants[0])
+		} else {
+			p("  %-18s %s NOT granted: relative, missing, or overlapping the data dir\n", "managed python", want)
+		}
 	}
 	if res.Enforced && !res.PathnameSocketMediated {
 		p("  %-18s pathname AF_UNIX connect is not mediated by any Landlock ABI;\n",

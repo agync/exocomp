@@ -3,6 +3,7 @@ package deps
 import (
 	"os"
 	"path/filepath"
+	"slices"
 
 	"exocomp.dev/exocomp/internal/executor"
 )
@@ -66,7 +67,7 @@ func NewResolverSandbox(opts ResolverSandboxOptions) SandboxLauncher {
 	profile := executor.ProfileFor(depsSandboxKind, executor.SandboxOptions{
 		Binary:       opts.Binary,
 		DataDir:      opts.DataDir,
-		ReadPaths:    opts.ReadPaths,
+		ReadPaths:    append(slices.Clone(opts.ReadPaths), executor.PythonInstallGrants(opts.DataDir)...),
 		ReadFiles:    uvConfigFiles(),
 		WritePaths:   write,
 		ConnectPorts: ports,
