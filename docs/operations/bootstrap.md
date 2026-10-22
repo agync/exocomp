@@ -38,7 +38,8 @@ zstd or gzip → tar for a git target, sha256-verified either way. The git chain
 checks the manifest tags under the target's manifest subkey and refuses a snapshot
 without them unless `--allow-unauthenticated` is given. The tags are keyed from the
 branch's own `keyring.age`, so `--keyring` with a copy you trust makes the script refuse
-a branch whose keyring differs. Run `recovery.sh --help`. It is versioned separately on purpose: the recovery path
+a branch whose keyring differs, and `--target-name` stops the branch choosing which
+target's tags it passes for. Run `recovery.sh --help`. It is versioned separately on purpose: the recovery path
 must not depend on the thing that broke.
 
 ### Host key at rest
