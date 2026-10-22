@@ -66,6 +66,30 @@ func runUnsandboxed(ctx context.Context, plain Driver, caps Caps, spec Spec, sin
 	return plain.Run(ctx, spec, sink)
 }
 
+// runPrivileged runs an ansible job unsandboxed. HOME, TMPDIR and the remote
+// temp stay the daemon's own, because the run asked out of the sandbox, but the
+// two scratch paths ansible.cfg commonly sets relative to the checkout are
+// still pinned to a per-job directory: a read-only source checkout (a
+// containerised daemon mounts it so) would otherwise fail at startup creating
+// local_tmp or the ssh control sockets under it.
+func (a *sandboxedAnsible) runPrivileged(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
+	job, cleanup, err := newJobDir(a.opts.PrivateDirRoot)
+	if err != nil {
+		return Result{}, err
+	}
+	defer cleanup(sink)
+	controlPath := filepath.Join(job.home, "cp")
+	if err := os.Mkdir(controlPath, 0o700); err != nil {
+		return Result{}, fmt.Errorf("executor: privileged: control path dir: %w", err)
+	}
+	opts := a.opts
+	opts.Env = append(slices.Clone(opts.Env),
+		"ANSIBLE_LOCAL_TEMP="+job.tmp,
+		"ANSIBLE_SSH_CONTROL_PATH_DIR="+controlPath,
+	)
+	return runUnsandboxed(ctx, NewAnsible(opts), a.sandbox.Caps, spec, sink)
+}
+
 // jobDirPrefix names the per-job private directory the sandboxed tier creates
 // inside the private root. Each job gets its own so a grant covers one job's
 // material and not the material of every job sharing that root — "other jobs'
@@ -105,7 +129,7 @@ func NewSandboxedAnsible(opts AnsibleOptions, sandbox SandboxOptions) Driver {
 // Run implements Driver.
 func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
 	if spec.Privileged {
-		return runUnsandboxed(ctx, NewAnsible(a.opts), a.sandbox.Caps, spec, sink)
+		return a.runPrivileged(ctx, spec, sink)
 	}
 	job, cleanup, err := newJobDir(a.opts.PrivateDirRoot)
 	if err != nil {
