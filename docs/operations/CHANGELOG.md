@@ -14,6 +14,13 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.3.1](https://github.com/agync/exocomp/compare/v0.3.0...v0.3.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **backup:** keep the git:// scheme in a source ([4be461a](https://github.com/agync/exocomp/commit/4be461ad1166b58678b7ebab9b3d59da360145ae))
+
 ## [0.3.0](https://github.com/agync/exocomp/compare/v0.2.0...v0.3.0) (2026-10-22)
 
 
