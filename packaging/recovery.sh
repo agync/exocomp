@@ -200,48 +200,66 @@ elif command -v exocomp >/dev/null 2>&1; then
     exocomp_bin=$(command -v exocomp)
 fi
 
-# repo_path strips the kind prefix a target uri may carry, so "restic_local:/srv/x"
-# and "/srv/x" name the same repository.
-repo_path() {
-    case "$1" in
-        restic_local:*) echo "${1#restic_local:}" ;;
-        local:*)        echo "${1#local:}" ;;
-        restic_s3:*)    echo "${1#restic_s3:}" ;;
-        *)              echo "$1" ;;
-    esac
-}
-
 # trim strips surrounding whitespace, as "exocomp restore" does to --from.
 trim() {
     printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
 
-# is_git_target reports whether a --from value names a git target, by the same
-# rules as ParseSource and inferKind in internal/backup/restore.go: an explicit
-# restic_local: or restic_s3: prefix is restic, a git: prefix is git, otherwise
-# s3: is restic, a .git suffix or a git@, git://, ssh:// or https:// form is git,
-# and anything else is git when it holds an objects entry once local: is
-# dropped. packaging/restore_git_test.go compares the two.
-is_git_target() {
+# parse_source reads a --from value once, and everything that follows works from
+# what it sets, so detection and the value handed to git or restic cannot
+# diverge:
+#   src_kind  git or restic
+#   src_uri   the remote or repository, without a kind prefix. A local git path
+#             is made unmistakably local, because git reads host:path as a
+#             remote host, so a directory named like one would be fetched from
+#             the network
+#   src_s3    1 when the repository is an s3 one
+# The kind follows ParseSource and inferKind in internal/backup/restore.go: an
+# explicit restic_local: or restic_s3: prefix is restic, a git: prefix is git,
+# otherwise s3: is restic, a .git suffix or a git@, git://, ssh:// or https://
+# form is git, and anything else is git when it holds an objects entry once
+# local: is dropped. packaging/restore_git_test.go compares the two.
+parse_source() {
     spec=$(trim "$1")
+    src_s3=""
     case "$spec" in
-        restic_local:?*|restic_s3:?*) return 1 ;;
-        git:?*) return 0 ;;
-        s3:*) return 1 ;;
-        *.git|git@*|git://*|ssh://*|https://*) return 0 ;;
+        restic_local:?*) src_kind=restic; src_uri=${spec#restic_local:} ;;
+        restic_s3:?*)    src_kind=restic; src_uri=${spec#restic_s3:}; src_s3=1 ;;
+        git:?*)
+            src_kind=git
+            case "$spec" in
+                git://*) src_uri=$spec ;;
+                *)       src_uri=${spec#git:} ;;
+            esac
+            ;;
+        s3:*)            src_kind=restic; src_uri=$spec; src_s3=1 ;;
+        *.git|git@*|git://*|ssh://*|https://*) src_kind=git; src_uri=$spec ;;
+        *)
+            src_kind=restic
+            if [ -e "${spec#local:}/objects" ]; then src_kind=git; fi
+            src_uri=$spec
+            ;;
     esac
-    [ -e "${spec#local:}/objects" ]
+    case "$src_uri" in
+        local:*) src_uri=${src_uri#local:} ;;
+    esac
+    if [ "$src_kind" = git ] && [ -d "$src_uri" ]; then
+        src_uri=$(local_path "$src_uri")
+    fi
 }
 
-# git_url is the remote a git target names, without the git: kind prefix. A
-# git:// scheme keeps its prefix, which is part of the url.
-git_url() {
-    spec=$(trim "$1")
-    case "$spec" in
-        git://*) echo "$spec" ;;
-        git:?*)  echo "${spec#git:}" ;;
-        *)       echo "$spec" ;;
+# local_path makes a path that cannot be read as an option or as host:path.
+local_path() {
+    case "$1" in
+        /*) printf '%s' "$1" ;;
+        *)  printf './%s' "$1" ;;
     esac
+}
+
+# is_git_target reports whether a --from value names a git target.
+is_git_target() {
+    parse_source "$1"
+    [ "$src_kind" = git ]
 }
 
 # hex prints stdin as one line of lowercase hex.
@@ -324,18 +342,20 @@ manual_restore() {
         || fail "restore requires --from <uri-or-kind:uri>"
     [ -n "$identity" ] || identity=$(ask "age identity file holding the recovery key: ") \
         || fail "restore without an exocomp binary requires --identity <recovery-key-file>"
+    identity=$(local_path "$identity")
     [ -r "$identity" ] || fail "identity file $identity is not readable"
 
-    if is_git_target "$from"; then
+    parse_source "$from"
+    if [ "$src_kind" = git ]; then
         manual_restore_git
         return
     fi
     require_tools age openssl restic od tr base64 sha256sum awk
 
-    repo=$(repo_path "$from")
+    repo=$src_uri
 
-    case "$from" in
-        s3:*|restic_s3:*)
+    case "$src_s3" in
+        1)
             [ -n "$keyring" ] || fail "a $from target cannot be read as a directory: fetch keyring.age from the target root yourself and pass --keyring FILE"
             ;;
         *)
@@ -456,7 +476,7 @@ keyring_generation() {
 manual_restore_git() {
     require_tools git age openssl tar cat cmp find head sort uniq sha256sum awk wc od tr sed grep cut
 
-    repo=$(git_url "$from")
+    repo=$src_uri
 
     umask 0077
     work=$(mktemp -d "${TMPDIR:-/tmp}/exocomp-restore.XXXXXX")
@@ -628,6 +648,8 @@ require_tools() {
 
 # No container runtime is required to restore: recovery must not depend on
 # anything but the files and off-the-shelf tools (AGENTS.md invariant 7).
+[ -z "$identity" ] || identity=$(local_path "$identity")
+[ -z "$keyring" ] || keyring=$(local_path "$keyring")
 echo "recovery.sh $VERSION: dest=$dest"
 # exocomp restore has no way to pin a keyring, so a pin is only honoured by the
 # chain run here. Only a source that is certainly not git, by the rules of

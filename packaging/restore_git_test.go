@@ -773,7 +773,7 @@ func TestRecoveryShClassifiesTargetsAsRestoreDoes(t *testing.T) {
 		"http://host/repo", "http://host/repo.git", "file:///srv/repo", "file:///srv/repo.git",
 		"file://" + withObjects, "ftp://host/repo.git", "", "   ", "/nonexistent",
 	}
-	funcs := shellFunctions(t, "trim", "is_git_target")
+	funcs := shellFunctions(t, "trim", "local_path", "parse_source", "is_git_target")
 	for _, spec := range specs {
 		src, err := backup.ParseSource(spec)
 		if err != nil {
@@ -823,5 +823,79 @@ func TestRecoveryShOutputIsInert(t *testing.T) {
 	// what the remote supplied.
 	if !strings.Contains(out, `\033[31m\n\c\0`) {
 		t.Errorf("the backslash text was altered:\n%s", out)
+	}
+}
+
+// TestRecoveryShHandsGitTheRightRemote: the remote git is invoked with comes
+// from the same parse that decides the target is git. A local path is handed
+// over as a path that git cannot read as host:path, a prefix is dropped, and a
+// remote is left alone.
+func TestRecoveryShHandsGitTheRightRemote(t *testing.T) {
+	requireNoBinary(t)
+
+	cwd := t.TempDir()
+	for _, d := range []string{"bare/objects", "host:dir.git", "-odd/objects"} {
+		if err := os.MkdirAll(filepath.Join(cwd, d), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	abs := filepath.Join(cwd, "bare")
+	identity := filepath.Join(cwd, "id")
+	if err := os.WriteFile(identity, []byte("x\n"), 0o600); err != nil {
+		t.Fatalf("write identity: %v", err)
+	}
+	logFile := filepath.Join(t.TempDir(), "git.args")
+	stubDir := t.TempDir()
+	stub := "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > '" + logFile + "'\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(stubDir, "git"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	script, err := filepath.Abs("recovery.sh")
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+
+	for _, c := range []struct{ spec, want string }{
+		{"local:" + abs, abs},
+		{"  " + abs + "\t", abs},
+		{"git:" + abs, abs},
+		{"local:bare", "./bare"},
+		{"bare", "./bare"},
+		{"git:bare", "./bare"},
+		{"local:-odd", "./-odd"},
+		{"host:dir.git", "./host:dir.git"},
+		{"local:host:dir.git", "./host:dir.git"},
+		{"host.example:org/repo.git", "host.example:org/repo.git"},
+		{"git:host.example:org/repo", "host.example:org/repo"},
+		{"git@host.example:org/repo", "git@host.example:org/repo"},
+		{"git://host.example/repo", "git://host.example/repo"},
+		{"ssh://host.example/org/repo", "ssh://host.example/org/repo"},
+		{"file:///srv/repo.git", "file:///srv/repo.git"},
+		{"https://user:pw@host.example/org/repo.git", "https://user:pw@host.example/org/repo.git"},
+	} {
+		_ = os.Remove(logFile)
+		cmd := exec.Command("sh", script, "--from", c.spec, "--dest", filepath.Join(cwd, "dest"), "--identity", identity)
+		cmd.Dir = cwd
+		cmd.Env = []string{
+			"PATH=" + stubDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+			"HOME=" + t.TempDir(), "TMPDIR=" + t.TempDir(),
+		}
+		if out, err := cmd.CombinedOutput(); err == nil {
+			t.Errorf("%q: recovery.sh exited 0 against a git that fails:\n%s", c.spec, out)
+			continue
+		}
+		raw, err := os.ReadFile(logFile)
+		if err != nil {
+			t.Errorf("%q: git was not invoked: %v", c.spec, err)
+			continue
+		}
+		args := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+		if len(args) < 3 || args[len(args)-3] != "--" {
+			t.Errorf("%q: git was invoked as %q, want the remote after --", c.spec, args)
+			continue
+		}
+		if got := args[len(args)-2]; got != c.want {
+			t.Errorf("%q: git was handed %q, want %q", c.spec, got, c.want)
+		}
 	}
 }
