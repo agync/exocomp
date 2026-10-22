@@ -14,6 +14,28 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.3.0](https://github.com/agync/exocomp/compare/v0.2.0...v0.3.0) (2026-10-22)
+
+
+### Features
+
+* **cli:** say when a run skips the default remote ([c6d11c0](https://github.com/agync/exocomp/commit/c6d11c0fbd07241e7aebeaf923a69ef20726df16))
+* **serve:** let remote runs grant listed identities ([754e58d](https://github.com/agync/exocomp/commit/754e58d057025331007c8659e704cd7ef4a6ecc6))
+
+
+### Bug Fixes
+
+* **backup:** make the git recovery card commands run ([1787657](https://github.com/agync/exocomp/commit/17876578e6595db03a81b0bd38c10a548841e2d6))
+* **doctor:** say a job can reach a mounted socket ([5abd0b6](https://github.com/agync/exocomp/commit/5abd0b6ef146bd148878d44bdde5e703b2d88ba7))
+* **image:** keep uv's Python dir at runtime ([d5a08ca](https://github.com/agync/exocomp/commit/d5a08cabad290322c76a0755f3b0ebf558376aea))
+* **recovery:** harden the git hand restore ([f516c9f](https://github.com/agync/exocomp/commit/f516c9faea67214636e092d1dcdaa054a7fc271d))
+* **recovery:** match restore's kind rules ([5d5ef35](https://github.com/agync/exocomp/commit/5d5ef35dcb58922404d3261d19a2ece560a06ba5))
+* **recovery:** parse the source once ([f23a98d](https://github.com/agync/exocomp/commit/f23a98d06aa250bfdd4fad8953052b3232fa1fc7))
+* **recovery:** restore git targets by hand ([e46181d](https://github.com/agync/exocomp/commit/e46181d7be2c3b0a0cae54fc00d1b9292d55e8b9))
+* **sandbox:** give the resolvers proxy egress ([b26a19f](https://github.com/agync/exocomp/commit/b26a19f37bfad19a47a99e0c272f984017c74e2d))
+* **sandbox:** grant the managed Python dir ([2dfd5fa](https://github.com/agync/exocomp/commit/2dfd5fadac8099ee1e48f8ab10733b3bbf5a93b6))
+* **sandbox:** make remote temp on the target host ([f21b23f](https://github.com/agync/exocomp/commit/f21b23f460fc7010895e515b48130b3eb00de975))
+
 ## [0.2.0](https://github.com/agync/exocomp/compare/v0.1.2...v0.2.0) (2026-10-18)
 
 
