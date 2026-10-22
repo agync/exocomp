@@ -713,3 +713,115 @@ func TestRecoveryShPinNeedsTheChainRunHere(t *testing.T) {
 		t.Errorf("an unpinned restore did not go to the binary:\n%s", out)
 	}
 }
+
+// shellFunctions returns the named top-level functions of recovery.sh, so a
+// test can run them alone.
+func shellFunctions(t *testing.T, names ...string) string {
+	t.Helper()
+	body, err := os.ReadFile("recovery.sh")
+	if err != nil {
+		t.Fatalf("read recovery.sh: %v", err)
+	}
+	var out []string
+	lines := strings.Split(string(body), "\n")
+	for _, name := range names {
+		found := false
+		for i, line := range lines {
+			if line != name+"() {" {
+				continue
+			}
+			found = true
+			for j := i; j < len(lines); j++ {
+				out = append(out, lines[j])
+				if lines[j] == "}" {
+					break
+				}
+			}
+			break
+		}
+		if !found {
+			t.Fatalf("recovery.sh has no function %s", name)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// TestRecoveryShClassifiesTargetsAsRestoreDoes: with --keyring set, a source
+// that exocomp restore would read as git must never reach it, so the script's
+// is_git_target has to agree with ParseSource on every spelling, whitespace and
+// local: forms included.
+func TestRecoveryShClassifiesTargetsAsRestoreDoes(t *testing.T) {
+	requireTools(t, "sh", "sed", "printf")
+
+	dir := t.TempDir()
+	withObjects := filepath.Join(dir, "bare")
+	if err := os.MkdirAll(filepath.Join(withObjects, "objects"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	without := filepath.Join(dir, "restic-repo")
+	if err := os.MkdirAll(filepath.Join(without, "data"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	specs := []string{
+		withObjects, "local:" + withObjects, "  " + withObjects + "\t", "restic_local:" + withObjects,
+		"git:" + withObjects, "git:", "git:   ", "  git:/srv/x  ",
+		without, "local:" + without, "restic_local:" + without, "restic_local:", "restic_s3:s3:bucket",
+		"s3:https://host/bucket", "s3:https://host/bucket.git",
+		"/srv/x.git", "local:/srv/x.git", "restic_local:/srv/x.git", "  /srv/x.git  ", "x.git ",
+		"git@host:org/repo", "git@host:org/repo.git", "host.example:org/repo", "user@host:org/repo",
+		"git://host/repo", "ssh://host/repo", "ssh://user@host/repo.git", "https://host/repo",
+		"http://host/repo", "http://host/repo.git", "file:///srv/repo", "file:///srv/repo.git",
+		"file://" + withObjects, "ftp://host/repo.git", "", "   ", "/nonexistent",
+	}
+	funcs := shellFunctions(t, "trim", "is_git_target")
+	for _, spec := range specs {
+		src, err := backup.ParseSource(spec)
+		if err != nil {
+			continue
+		}
+		want := src.Kind == backup.KindGit
+
+		cmd := exec.Command("sh", "-c", funcs+"\nis_git_target \"$1\"", "sh", spec)
+		got := cmd.Run() == nil
+		if got != want {
+			t.Errorf("is_git_target(%q) = %v, ParseSource says kind %s", spec, got, src.Kind)
+		}
+	}
+}
+
+// TestRecoveryShOutputIsInert: a name from the remote reaches the script's
+// messages, and neither an escape sequence nor a backslash sequence in it may
+// reach the terminal. dash's echo reads backslash sequences, and bash's does
+// with xpg_echo, so the test runs under dash when there is one.
+func TestRecoveryShOutputIsInert(t *testing.T) {
+	requireNoBinary(t)
+	shell := "sh"
+	if p, err := exec.LookPath("dash"); err == nil {
+		shell = p
+	}
+
+	bare, identity := backupFixtureFor(t, backup.KindGit)
+	hostile := "\x1b[2J\\033[31m\\n\\c\\0 \x07 \u00e9 end"
+	rewriteSnapshot(t, bare, identity, rewrite{
+		target:   "x",
+		recovery: []byte("target-name: " + hostile + "\n"),
+	})
+	home := t.TempDir()
+	cmd := exec.Command(shell, "recovery.sh", "--from", bare, "--dest", filepath.Join(home, "d"), "--identity", identity)
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "TMPDIR=" + t.TempDir()}
+	raw, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("recovery.sh exited 0:\n%s", raw)
+	}
+	out := string(raw)
+	for _, r := range strings.ReplaceAll(out, "\n", "") {
+		if r < ' ' || r > '~' {
+			t.Fatalf("recovery.sh printed %q:\n%q", r, out)
+		}
+	}
+	// The text survives as inert characters, so the operator can still see
+	// what the remote supplied.
+	if !strings.Contains(out, `\033[31m\n\c\0`) {
+		t.Errorf("the backslash text was altered:\n%s", out)
+	}
+}
