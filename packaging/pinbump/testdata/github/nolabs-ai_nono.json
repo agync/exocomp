@@ -1,0 +1,7 @@
+[
+  {"tag_name": "v0.80.0", "draft": false, "prerelease": false, "html_url": "https://github.com/nolabs-ai/nono/releases/tag/v0.80.0", "assets": [
+    {"name": "SHA256SUMS.txt", "browser_download_url": "{{server}}/dl/SHA256SUMS.txt", "digest": ""},
+    {"name": "nono-v0.80.0-x86_64-unknown-linux-gnu.tar.gz", "browser_download_url": "{{server}}/dl/nono-v0.80.0-x86_64-unknown-linux-gnu.tar.gz", "digest": ""},
+    {"name": "nono-v0.80.0-aarch64-unknown-linux-gnu.tar.gz", "browser_download_url": "{{server}}/dl/nono-v0.80.0-aarch64-unknown-linux-gnu.tar.gz", "digest": ""}
+  ]}
+]

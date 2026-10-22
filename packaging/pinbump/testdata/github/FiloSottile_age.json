@@ -1,0 +1,6 @@
+[
+  {"tag_name": "v1.3.2", "draft": false, "prerelease": false, "html_url": "https://github.com/FiloSottile/age/releases/tag/v1.3.2", "assets": [
+    {"name": "age-v1.3.2-linux-amd64.tar.gz", "browser_download_url": "{{server}}/dl/age-v1.3.2-linux-amd64.tar.gz", "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+    {"name": "age-v1.3.2-linux-arm64.tar.gz", "browser_download_url": "{{server}}/dl/age-v1.3.2-linux-arm64.tar.gz", "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+  ]}
+]

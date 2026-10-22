@@ -1,7 +1,8 @@
 # sha256 of every pinned tool artifact the image fetches, per architecture.
-# Format: <tool> <arch> <sha256>. The versions live in the Containerfile's ARGs;
-# change both together, and take the digest from the upstream release's own
-# checksum file rather than from a local download.
+# Format: <tool> <arch> <sha256>. The versions live in the Containerfile's ARGs.
+# `go run ./packaging/pinbump` changes both together, taking the digest from the
+# upstream release's own checksum file, or from GitHub's recorded asset digest
+# where the release has none, rather than from a local download.
 tofu amd64 901121681e751574d739de5208cad059eddf9bd739b575745cf9e3c961b28a13
 tofu arm64 1b79f8fe3cbf7ac0540507bb6bd0ecab1675c78393bbf492867eaabb79840eec
 restic amd64 f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c
