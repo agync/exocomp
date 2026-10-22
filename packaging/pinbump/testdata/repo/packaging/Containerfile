@@ -1,0 +1,14 @@
+FROM ${FEDORA_IMAGE} AS tools
+ARG TARGETARCH=amd64
+ARG TOFU_VERSION=1.11.5
+ARG AGE_VERSION=1.3.1
+ARG NONO_VERSION=0.74.0
+
+RUN set -eu; \
+    fetch tofu "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TARGETARCH}.zip"; \
+    fetch age "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-${TARGETARCH}.tar.gz"; \
+    case "$TARGETARCH" in amd64) nono_arch=x86_64 ;; arm64) nono_arch=aarch64 ;; *) exit 1 ;; esac; \
+    fetch nono "https://github.com/nolabs-ai/nono/releases/download/v${NONO_VERSION}/nono-v${NONO_VERSION}-${nono_arch}-unknown-linux-gnu.tar.gz"
+
+FROM ${FEDORA_IMAGE} AS toolchain
+ARG PYTHON_VERSION=3.14.0

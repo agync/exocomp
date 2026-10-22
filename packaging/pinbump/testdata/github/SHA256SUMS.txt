@@ -1,0 +1,2 @@
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff  nono-v0.80.0-x86_64-unknown-linux-gnu.tar.gz
+9999999999999999999999999999999999999999999999999999999999999999  nono-v0.80.0-aarch64-unknown-linux-gnu.tar.gz
