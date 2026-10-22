@@ -80,21 +80,21 @@ redact() {
     sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/[:space:]]*@#\1***@#g'
 }
 
-# clean_line prints its arguments as one line with the URL userinfo masked and
-# every control character dropped. Names and values that came from a remote can
-# carry escape sequences or newlines, which would redraw the terminal or forge a
-# line of this script's own output.
+# clean_line prints its arguments with the URL userinfo masked and every byte
+# outside printable ASCII replaced by ?. Names and values that came from a
+# remote can carry escape sequences or newlines, which would redraw the terminal
+# or forge a line of this script's own output. say and fail print through printf
+# %s, because echo reads backslash sequences in some shells.
 clean_line() {
-    printf '%s' "$*" | redact | tr -d '[:cntrl:]'
-    echo
+    printf '%s' "$*" | redact | LC_ALL=C tr -c ' -~' '?'
 }
 
 say() {
-    echo "recovery.sh: $(clean_line "$*")"
+    printf 'recovery.sh: %s\n' "$(clean_line "$*")"
 }
 
 fail() {
-    echo "recovery.sh: $(clean_line "$*")" >&2
+    printf 'recovery.sh: %s\n' "$(clean_line "$*")" >&2
     exit 1
 }
 
@@ -211,23 +211,36 @@ repo_path() {
     esac
 }
 
-# is_git_target reports whether a --from value names a git target. It follows
-# the kind prefix and the inference "exocomp restore" applies: a git: prefix, a
-# .git suffix, a remote url form, or a local bare repository.
-is_git_target() {
-    case "$1" in
-        restic_local:*|local:*|restic_s3:*|s3:*) return 1 ;;
-        git://*|git:*|*.git|git@*|ssh://*|https://*) return 0 ;;
-    esac
-    [ -d "$1/objects" ]
+# trim strips surrounding whitespace, as "exocomp restore" does to --from.
+trim() {
+    printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
 
-# git_url strips the git: kind prefix, but not a git:// scheme.
+# is_git_target reports whether a --from value names a git target, by the same
+# rules as ParseSource and inferKind in internal/backup/restore.go: an explicit
+# restic_local: or restic_s3: prefix is restic, a git: prefix is git, otherwise
+# s3: is restic, a .git suffix or a git@, git://, ssh:// or https:// form is git,
+# and anything else is git when it holds an objects entry once local: is
+# dropped. packaging/restore_git_test.go compares the two.
+is_git_target() {
+    spec=$(trim "$1")
+    case "$spec" in
+        restic_local:?*|restic_s3:?*) return 1 ;;
+        git:?*) return 0 ;;
+        s3:*) return 1 ;;
+        *.git|git@*|git://*|ssh://*|https://*) return 0 ;;
+    esac
+    [ -e "${spec#local:}/objects" ]
+}
+
+# git_url is the remote a git target names, without the git: kind prefix. A
+# git:// scheme keeps its prefix, which is part of the url.
 git_url() {
-    case "$1" in
-        git://*) echo "$1" ;;
-        git:*)   echo "${1#git:}" ;;
-        *)       echo "$1" ;;
+    spec=$(trim "$1")
+    case "$spec" in
+        git://*) echo "$spec" ;;
+        git:?*)  echo "${spec#git:}" ;;
+        *)       echo "$spec" ;;
     esac
 }
 
@@ -349,7 +362,7 @@ manual_restore() {
     age -d -i "$identity" "$keyring" > "$work/dek.bin" \
         || fail "age could not unwrap $keyring with $identity"
 
-    echo "recovery.sh: deriving the repository password for target $target_name"
+    say "deriving the repository password for target $target_name"
     hkdf_key "$work/dek.bin" "restic-repo:$target_name" | base64 > "$work/restic.pass" \
         || fail "openssl could not derive the repository password"
 
@@ -617,10 +630,15 @@ require_tools() {
 # anything but the files and off-the-shelf tools (AGENTS.md invariant 7).
 echo "recovery.sh $VERSION: dest=$dest"
 # exocomp restore has no way to pin a keyring, so a pin is only honoured by the
-# chain run here.
-if [ -n "$exocomp_bin" ] && [ -n "$keyring" ] && [ -n "$from" ] && is_git_target "$from"; then
-    echo "recovery.sh: exocomp restore cannot pin a keyring; running the git chain by hand to honour --keyring" >&2
-    exocomp_bin=""
+# chain run here. Only a source that is certainly not git, by the rules of
+# is_git_target, goes to the binary with --keyring set, and it is told so.
+if [ -n "$exocomp_bin" ] && [ -n "$keyring" ] && [ -n "$from" ]; then
+    if is_git_target "$from"; then
+        echo "recovery.sh: exocomp restore cannot pin a keyring; running the git chain by hand to honour --keyring" >&2
+        exocomp_bin=""
+    else
+        echo "recovery.sh: --keyring applies to a git target only; exocomp restore ignores it" >&2
+    fi
 fi
 if [ -z "$exocomp_bin" ]; then
     echo "recovery.sh: no exocomp binary; running the recovery card's chain by hand" >&2
