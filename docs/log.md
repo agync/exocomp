@@ -8,6 +8,12 @@ Newest first.
 
 ## 2026-10-22
 
+- **Toolchain pin bumps.** [Toolchain pin bumps](contribution/pin-bumps.md) describes the
+  weekly job that proposes newer releases of the image's sha256-pinned tools, how to run
+  `packaging/pinbump` locally, which pins stay manual and why, and the two app permissions
+  the job needs. [The contributor guide](contribution/index.md), [the knowledge base
+  index](index.md) and [the bill of materials](sbom/bill-of-materials.md) link it.
+
 - **Git recovery card commands corrected.** [Disaster recovery](operations/disaster-recovery.md#the-recovery-card)
   says a git target's card concatenates the `.age.partNN` parts before `age -d`, because the
   leg never writes a bare `.age` snapshot, and the card no longer unwraps a DEK it does not use.

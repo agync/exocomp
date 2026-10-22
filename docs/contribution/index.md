@@ -12,6 +12,7 @@ How work lands in exocomp and what gates it. The foundational contract lives in 
 | [Codebase architecture map](architecture.md) | Package relationships, unidirectional store boundaries, the step ledger, and the nono execution driver |
 | [Worktree lanes & branch hygiene](worktrees.md) | Parallel work in `.worktrees/`, linear commit history on `main`, and commit message conventions |
 | [Schema migrations](migrations.md) | Authoring forward-only SQLite migrations, `PRAGMA user_version`, and collision resolution |
+| [Toolchain pin bumps](pin-bumps.md) | The weekly job that proposes newer tool releases, running `packaging/pinbump` locally, which pins stay manual, and the bot's permissions |
 
 ## The core contract (Invariants summary)
 

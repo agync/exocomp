@@ -17,7 +17,8 @@ per-source venv's default `ansible-core` comes from it, with the compiled defaul
 fallback for a run outside the image. A packaging test fails if the committed pins drift
 from the Containerfile's build args. **Exact versions are enforced by `exocomp doctor`**,
 which refuses to run a job whose tool version is outside a tested range rather than failing
-later with a parse error.
+later with a parse error. A weekly job proposes newer releases of the sha256-pinned tools
+below, one pull request per tool ([toolchain pin bumps](../contribution/pin-bumps.md)).
 
 ## The license boundary
 

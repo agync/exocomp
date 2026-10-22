@@ -60,6 +60,7 @@ How work lands here and what gates it — [contribution/index.md](contribution/i
 | [Codebase architecture map](contribution/architecture.md) | Package relationships, unidirectional store boundaries, the step ledger, and the nono execution driver |
 | [Worktree lanes & branch hygiene](contribution/worktrees.md) | Parallel work in `.worktrees/`, linear commit history on `main`, and commit message conventions |
 | [Schema migrations](contribution/migrations.md) | Authoring forward-only SQLite migrations, `PRAGMA user_version`, and collision resolution |
+| [Toolchain pin bumps](contribution/pin-bumps.md) | The weekly job that proposes newer tool releases, running `packaging/pinbump` locally, which pins stay manual, and the bot's permissions |
 
 ---
 
