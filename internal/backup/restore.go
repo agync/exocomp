@@ -84,6 +84,11 @@ func ParseSource(spec string) (Source, error) {
 	}
 	for _, kind := range []string{KindResticLocal, KindResticS3, KindGit} {
 		if uri, ok := strings.CutPrefix(spec, kind+":"); ok && uri != "" {
+			// git://host/repo is a URL whose scheme is git, not the kind
+			// prefix over //host/repo.
+			if kind == KindGit && strings.HasPrefix(uri, "//") {
+				break
+			}
 			return Source{Kind: kind, URI: uri}, nil
 		}
 	}
