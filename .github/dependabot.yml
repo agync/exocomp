@@ -3,8 +3,8 @@
 #
 # No `docker` entry: every FROM in packaging/Containerfile is ARG-indirected
 # (`FROM ${GO_IMAGE}`), so a version-update scan sees no image reference to bump,
-# and the subprocess tools are pinned by digest in packaging/tool-digests.txt.
-# Both stay hand-managed.
+# and the base images stay hand-managed. The subprocess tools pinned by digest in
+# packaging/tool-digests.txt are bumped by pin-bump.yml.
 version: 2
 updates:
   - package-ecosystem: gomod

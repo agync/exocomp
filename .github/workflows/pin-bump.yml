@@ -1,0 +1,168 @@
+# Weekly bump of the release-fetched tool pins in packaging/Containerfile
+# (docs/contribution/pin-bumps.md). packaging/pinbump finds each tool's newest
+# stable release and rewrites its pin. Each bumped tool gets one pull request
+# on bot/bump-<tool>, opened as the GitHub App, so ci.yml runs on it. A pull
+# request opened with GITHUB_TOKEN would trigger no workflow. Nothing here
+# merges, approves or closes a pull request.
+#
+# Third-party actions are pinned by commit, since this job holds a token that
+# can push.
+name: pin-bump
+
+on:
+  schedule:
+    - cron: "37 4 * * 1" # Mondays 04:37 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: pin-bump
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tools:
+    if: github.repository == 'agync/exocomp' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tools: ${{ steps.list.outputs.tools }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: List the bumpable tools
+        id: list
+        run: |
+          set -euo pipefail
+          tools=$(go run ./packaging/pinbump -list)
+          echo "tools=$tools" >> "$GITHUB_OUTPUT"
+
+  # One job per tool, so one upstream's broken release fails only its own job.
+  bump:
+    needs: tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: ${{ fromJSON(needs.tools.outputs.tools) }}
+    env:
+      TOOL: ${{ matrix.tool }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Find a newer release
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          go run ./packaging/pinbump -plan -tool "$TOOL" > "$RUNNER_TEMP/plan.json"
+          cat "$RUNNER_TEMP/plan.json"
+          to=$(jq -r '.[0].to // empty' "$RUNNER_TEMP/plan.json")
+          echo "to=$to" >> "$GITHUB_OUTPUT"
+
+      # The token is scoped down to what pushing a branch and opening a pull
+      # request need, whatever else the app is granted.
+      - name: Mint the app token
+        id: app-token
+        if: steps.plan.outputs.to != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # The app token is not in this step's environment.
+      - name: Commit the bump
+        id: commit
+        if: steps.plan.outputs.to != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          WANT: ${{ steps.plan.outputs.to }}
+        run: |
+          set -euo pipefail
+          bot_id=$(gh api "users/${APP_SLUG}[bot]" --jq .id)
+          email="${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "$email"
+          echo "email=$email" >> "$GITHUB_OUTPUT"
+
+          git switch --quiet -C "bot/bump-$TOOL" "$GITHUB_SHA"
+          go run ./packaging/pinbump -tool "$TOOL" -body "$RUNNER_TEMP/body.md"
+          to=$(jq -r --arg t "$TOOL" '.[$t]' packaging/MANIFEST.json)
+          if [ "$to" != "$WANT" ]; then
+            echo "::error::$TOOL resolved to $to, the plan said $WANT"
+            exit 1
+          fi
+          git add packaging/Containerfile packaging/tool-digests.txt \
+            packaging/MANIFEST.json docs/sbom/bill-of-materials.md
+          git commit --quiet -m "build(image): bump $TOOL to $to"
+
+      # Only the app's pull requests from this repository's own branch count,
+      # so a fork's pull request from a branch of the same name is ignored.
+      - name: Push and open or update the pull request
+        if: steps.plan.outputs.to != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          BOT_EMAIL: ${{ steps.commit.outputs.email }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          branch="bot/bump-$TOOL"
+          title=$(git log -1 --format=%s "$branch")
+          listed=$(gh pr list --head "$branch" --base main --state all --app "$APP_SLUG" \
+            --json number,title,state,isCrossRepository)
+          prs=$(jq '[.[] | select(.isCrossRepository | not)]' <<< "$listed")
+
+          declined=$(jq --arg t "$title" '[.[] | select(.title == $t and .state == "CLOSED")] | length' <<< "$prs")
+          if [ "$declined" != "0" ]; then
+            echo "::notice::$title was closed unmerged, not proposing it again"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --heads origin "refs/heads/$branch" > /dev/null; then
+            git fetch --quiet origin "refs/heads/$branch"
+            remote=$(git rev-parse FETCH_HEAD)
+            authors=$(git log --format='%ae%n%ce' "$GITHUB_SHA..$remote")
+            if [ -n "$authors" ] && grep -qvxF "$BOT_EMAIL" <<< "$authors"; then
+              echo "::warning::$branch has commits from someone else, leaving it"
+              exit 0
+            fi
+            # A branch that proposes this version and still merges cleanly is
+            # left as it is, so a moving main does not re-run its CI weekly.
+            if [ "$(git log -1 --format=%s "$remote")" = "$title" ] \
+              && git merge-tree --write-tree "$GITHUB_SHA" "$remote" > /dev/null; then
+              echo "$branch already proposes this version"
+            else
+              git push --quiet --force-with-lease="refs/heads/$branch:$remote" origin "$branch"
+            fi
+          else
+            git push --quiet origin "$branch"
+          fi
+
+          pr=$(jq -r '[.[] | select(.state == "OPEN")][0].number // empty' <<< "$prs")
+          if [ -n "$pr" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$pr" \
+              -f title="$title" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          else
+            gh pr create --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
