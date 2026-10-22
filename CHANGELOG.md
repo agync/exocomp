@@ -14,6 +14,13 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.3.2](https://github.com/agync/exocomp/compare/v0.3.1...v0.3.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **executor:** pin privileged ansible scratch ([b3625f4](https://github.com/agync/exocomp/commit/b3625f4760aef755ee4372eb135f927b4c623371))
+
 ## [0.3.1](https://github.com/agync/exocomp/compare/v0.3.0...v0.3.1) (2026-10-22)
 
 
