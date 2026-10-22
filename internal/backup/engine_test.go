@@ -682,6 +682,7 @@ func TestParseSource(t *testing.T) {
 	}{
 		{"restic_local:/srv/backups", KindResticLocal, "/srv/backups"},
 		{"git:/srv/repo", KindGit, "/srv/repo"},
+		{"git://host/repo", KindGit, "git://host/repo"},
 		{"s3:http://127.0.0.1:9000/bucket", KindResticS3, "s3:http://127.0.0.1:9000/bucket"},
 		{"git@example.invalid:ops/backup.git", KindGit, "git@example.invalid:ops/backup.git"},
 		{"/srv/backups", KindResticLocal, "/srv/backups"},
