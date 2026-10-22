@@ -48,6 +48,14 @@ type rewrite struct {
 	// attacker's choosing, to the same public recipient, and tags everything
 	// under that DEK's subkey.
 	forgeKeyring bool
+	// target is the name the tags are keyed to, when not the fixture's.
+	target string
+	// recovery replaces RECOVERY.md, and beside runs after the files are
+	// written and before the commit, to add whatever else a remote can hold.
+	recovery []byte
+	beside   func(t *testing.T, clone string)
+	// bodySnapshot changes the snapshot name the parts manifest records.
+	bodySnapshot string
 }
 
 func run(t *testing.T, stdin []byte, name string, args ...string) []byte {
@@ -117,7 +125,11 @@ func rewriteSnapshot(t *testing.T, bare, identity string, rw rewrite) {
 			t.Fatalf("write forged keyring: %v", err)
 		}
 	}
-	key, err := backup.ManifestMACKey(dek, gitTargetName)
+	name := gitTargetName
+	if rw.target != "" {
+		name = rw.target
+	}
+	key, err := backup.ManifestMACKey(dek, name)
 	if err != nil {
 		t.Fatalf("derive manifest key: %v", err)
 	}
@@ -126,7 +138,7 @@ func rewriteSnapshot(t *testing.T, bare, identity string, rw rewrite) {
 	}
 	if rw.forgeKeyring {
 		entries[entryNamed(entries, "MANIFEST.mac")].body =
-			macFileBytes(t, key, entries[entryNamed(entries, "MANIFEST.json")].body, "MANIFEST.json")
+			macFileBytes(t, name, key, entries[entryNamed(entries, "MANIFEST.json")].body, "MANIFEST.json")
 	}
 
 	// Build the replacement.
@@ -171,7 +183,11 @@ func rewriteSnapshot(t *testing.T, bare, identity string, rw rewrite) {
 	n := max(rw.parts, 1)
 	size := len(newSealed)/n + 1
 	whole := sha256.Sum256(newSealed)
-	pm := backup.PartsManifest{Snapshot: snapshot, Size: int64(len(newSealed)), SHA256: hex.EncodeToString(whole[:])}
+	recorded := snapshot
+	if rw.bodySnapshot != "" {
+		recorded = rw.bodySnapshot
+	}
+	pm := backup.PartsManifest{Snapshot: recorded, Size: int64(len(newSealed)), SHA256: hex.EncodeToString(whole[:])}
 	parts := map[string][]byte{}
 	digits := max(2, len(strconv.Itoa(n-1)))
 	for i := range n {
@@ -203,21 +219,29 @@ func rewriteSnapshot(t *testing.T, bare, identity string, rw rewrite) {
 		if rw.badPartsKey {
 			tagKey = bytes.Repeat([]byte{7}, len(key))
 		}
-		if err := backup.WriteMACFile(pmPath+".mac", tagKey, pmBody, gitTargetName, filepath.Base(pmPath)); err != nil {
+		if err := backup.WriteMACFile(pmPath+".mac", tagKey, pmBody, name, filepath.Base(pmPath)); err != nil {
 			t.Fatalf("tag parts manifest: %v", err)
 		}
 	}
 
+	if rw.recovery != nil {
+		if err := os.WriteFile(filepath.Join(clone, "RECOVERY.md"), rw.recovery, 0o644); err != nil {
+			t.Fatalf("write RECOVERY.md: %v", err)
+		}
+	}
+	if rw.beside != nil {
+		rw.beside(t, clone)
+	}
 	runGit(t, clone, "add", "-A")
 	runGit(t, clone, "commit", "--quiet", "-m", "rewrite")
 	runGit(t, clone, "push", "--quiet", "--force", bare, "HEAD:refs/heads/backup")
 }
 
 // macFileBytes is a .mac tag over body under key.
-func macFileBytes(t *testing.T, key, body []byte, over string) []byte {
+func macFileBytes(t *testing.T, target string, key, body []byte, over string) []byte {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "tag.mac")
-	if err := backup.WriteMACFile(path, key, body, gitTargetName, over); err != nil {
+	if err := backup.WriteMACFile(path, key, body, target, over); err != nil {
 		t.Fatalf("write tag: %v", err)
 	}
 	out, err := os.ReadFile(path)
@@ -352,7 +376,7 @@ func TestRecoveryShGitRestoreRefusesWhatItCannotTrust(t *testing.T) {
 			name: "a MANIFEST.json tagged under another key",
 			rw: &rewrite{mutate: func(e []tarEntry, key []byte) []tarEntry {
 				i := entryNamed(e, "MANIFEST.json")
-				e[entryNamed(e, "MANIFEST.mac")].body = macFileBytes(t, bytes.Repeat([]byte{7}, len(key)), e[i].body, "MANIFEST.json")
+				e[entryNamed(e, "MANIFEST.mac")].body = macFileBytes(t, gitTargetName, bytes.Repeat([]byte{7}, len(key)), e[i].body, "MANIFEST.json")
 				return e
 			}},
 			want:    "does not authenticate",
@@ -363,7 +387,7 @@ func TestRecoveryShGitRestoreRefusesWhatItCannotTrust(t *testing.T) {
 			rw: &rewrite{mutate: func(e []tarEntry, key []byte) []tarEntry {
 				i := entryNamed(e, "MANIFEST.json")
 				e[i].body = bytes.Replace(e[i].body, []byte(`"manifest_version"`), []byte(`"keyring_version": 9,`+"\n  "+`"manifest_version"`), 1)
-				e[entryNamed(e, "MANIFEST.mac")].body = macFileBytes(t, key, e[i].body, "MANIFEST.json")
+				e[entryNamed(e, "MANIFEST.mac")].body = macFileBytes(t, gitTargetName, key, e[i].body, "MANIFEST.json")
 				return e
 			}},
 			want:    "older than the snapshot",
@@ -386,6 +410,47 @@ func TestRecoveryShGitRestoreRefusesWhatItCannotTrust(t *testing.T) {
 			allowed: "entry with a path",
 		},
 		{
+			name: "a symbolic link on the branch",
+			rw: &rewrite{beside: func(t *testing.T, clone string) {
+				if err := os.Symlink("/etc/hostname", filepath.Join(clone, "notes.txt")); err != nil {
+					t.Fatalf("symlink: %v", err)
+				}
+			}},
+			want:    "symbolic link",
+			allowed: "symbolic link",
+		},
+		{
+			name: "a second snapshot on the branch",
+			rw: &rewrite{beside: func(t *testing.T, clone string) {
+				if err := os.WriteFile(filepath.Join(clone, "snapshot-99991231T235959Z.tar.zst.age.parts.json"), []byte("{}\n"), 0o644); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+			}},
+			want:    "keeps exactly one",
+			allowed: "keeps exactly one",
+		},
+		{
+			name:    "a parts manifest describing another snapshot",
+			rw:      &rewrite{bodySnapshot: "snapshot-20200101T000000Z.tar.zst.age"},
+			want:    "describes a different snapshot",
+			allowed: "describes a different snapshot",
+		},
+		{
+			name: "two archive entries of one name",
+			rw: &rewrite{mutate: func(e []tarEntry, _ []byte) []tarEntry {
+				return append(e, tarEntry{name: "snapshot.db", typeflag: tar.TypeReg, body: []byte("x")})
+			}},
+			want:    "two entries of the same name",
+			allowed: "two entries of the same name",
+		},
+		{
+			name:    "a snapshot written for another target",
+			rw:      &rewrite{target: "other", recovery: []byte("target-name: other\n")},
+			args:    []string{"--target-name", gitTargetName},
+			want:    "does not authenticate",
+			allowed: "does not authenticate",
+		},
+		{
 			name:     "an identity that unwraps nothing",
 			useWrong: true,
 			want:     "cannot be authenticated",
@@ -404,7 +469,7 @@ func TestRecoveryShGitRestoreRefusesWhatItCannotTrust(t *testing.T) {
 			home := t.TempDir()
 
 			dest := filepath.Join(home, "refused")
-			out, err := runRecovery(t, home, "--from", bare, "--dest", dest, "--identity", identity)
+			out, err := runRecovery(t, home, append([]string{"--from", bare, "--dest", dest, "--identity", identity}, c.args...)...)
 			if err == nil {
 				t.Fatalf("recovery.sh exited 0:\n%s", out)
 			}
@@ -417,7 +482,7 @@ func TestRecoveryShGitRestoreRefusesWhatItCannotTrust(t *testing.T) {
 
 			// --allow-unauthenticated waives a missing tag and nothing else.
 			dest = filepath.Join(home, "allowed")
-			out, err = runRecovery(t, home, "--from", bare, "--dest", dest, "--identity", identity, "--allow-unauthenticated")
+			out, err = runRecovery(t, home, append([]string{"--from", bare, "--dest", dest, "--identity", identity, "--allow-unauthenticated"}, c.args...)...)
 			if c.allowed == "" {
 				if err != nil {
 					t.Errorf("--allow-unauthenticated did not accept a snapshot whose only fault is a missing tag: %v\n%s", err, out)
@@ -547,5 +612,104 @@ func TestRecoveryShKeepsKeysOutOfArguments(t *testing.T) {
 		if strings.Contains(string(body), banned) {
 			t.Errorf("recovery.sh passes key material to openssl as an argument (%s)", banned)
 		}
+	}
+}
+
+// TestRecoveryShGitRestoreSaysWhereTheTargetNameCameFrom: the name keys the
+// tags, so a name taken from the branch is flagged, and one the operator gives
+// is not.
+func TestRecoveryShGitRestoreSaysWhereTheTargetNameCameFrom(t *testing.T) {
+	requireNoBinary(t)
+
+	bare, identity := backupFixtureFor(t, backup.KindGit)
+	home := t.TempDir()
+
+	out, err := runRecovery(t, home, "--from", bare, "--dest", filepath.Join(home, "a"), "--identity", identity)
+	if err != nil {
+		t.Fatalf("restore: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "comes from the backup branch itself, so it does not show which target") {
+		t.Errorf("a name read from RECOVERY.md was not flagged:\n%s", out)
+	}
+
+	out, err = runRecovery(t, home, "--from", bare, "--dest", filepath.Join(home, "b"), "--identity", identity,
+		"--target-name", gitTargetName)
+	if err != nil {
+		t.Fatalf("restore: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "target name") {
+		t.Errorf("a name the operator gave was flagged:\n%s", out)
+	}
+}
+
+// TestRecoveryShGitRestoreKeepsTheTerminalClean: names and values from the
+// remote reach the script's messages, and a control character in one must not
+// redraw the terminal or forge a line.
+func TestRecoveryShGitRestoreKeepsTheTerminalClean(t *testing.T) {
+	requireNoBinary(t)
+
+	bare, identity := backupFixtureFor(t, backup.KindGit)
+	rewriteSnapshot(t, bare, identity, rewrite{
+		target:   "x",
+		recovery: []byte("target-name: \x1b[2Jevil\nrecovery.sh: restored everything\n"),
+	})
+	home := t.TempDir()
+	out, err := runRecovery(t, home, "--from", bare, "--dest", filepath.Join(home, "d"), "--identity", identity)
+	if err == nil {
+		t.Fatalf("recovery.sh exited 0:\n%s", out)
+	}
+	if strings.ContainsAny(out, "\x1b\r\x07") {
+		t.Errorf("recovery.sh passed a control character through:\n%q", out)
+	}
+	if strings.Contains(out, "\nrecovery.sh: restored everything") {
+		t.Errorf("a value from the remote forged a line of output:\n%s", out)
+	}
+}
+
+// TestRecoveryShPinNeedsTheChainRunHere: exocomp restore cannot pin a keyring,
+// so with --keyring the script runs its own chain even when a binary is on
+// PATH, and without it still hands the restore to the binary.
+func TestRecoveryShPinNeedsTheChainRunHere(t *testing.T) {
+	requireNoBinary(t)
+
+	bare, identity := backupFixtureFor(t, backup.KindGit)
+	trusted := filepath.Join(t.TempDir(), "keyring.age")
+	if err := os.WriteFile(trusted, run(t, nil, "git", "-C", bare, "show", "backup:keyring.age"), 0o600); err != nil {
+		t.Fatalf("save the trusted keyring: %v", err)
+	}
+	stubDir := t.TempDir()
+	marker := filepath.Join(stubDir, "ran")
+	stub := "#!/bin/sh\necho stub >> '" + marker + "'\n"
+	if err := os.WriteFile(filepath.Join(stubDir, "exocomp"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	withStub := func(args ...string) (string, error) {
+		cmd := exec.Command("sh", append([]string{"recovery.sh"}, args...)...)
+		cmd.Env = []string{
+			"PATH=" + stubDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+			"HOME=" + t.TempDir(),
+			"TMPDIR=" + t.TempDir(),
+		}
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	home := t.TempDir()
+
+	out, err := withStub("--from", bare, "--dest", filepath.Join(home, "pinned"), "--identity", identity, "--keyring", trusted)
+	if err != nil {
+		t.Fatalf("pinned restore with a binary on PATH: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Errorf("the binary ran although a keyring pin was given:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, "pinned", "exocomp.db")); err != nil {
+		t.Errorf("the pinned restore restored nothing: %v\n%s", err, out)
+	}
+
+	if out, err = withStub("--from", bare, "--dest", filepath.Join(home, "plain"), "--identity", identity); err != nil {
+		t.Fatalf("restore with a binary on PATH: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("an unpinned restore did not go to the binary:\n%s", out)
 	}
 }

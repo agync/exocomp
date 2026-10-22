@@ -29,8 +29,10 @@ Options:
   --keyring FILE     keyring.age, when it cannot be read from the target root
                      (any non-local restic target). For a git target, a copy
                      you trust that the backup branch's keyring.age must equal
-  --target-name NAME The name the repository password was derived from; read
-                     from RECOVERY.md when omitted (restic targets)
+  --target-name NAME The name the repository password was derived from, and the
+                     target the git tags are keyed to. Read from RECOVERY.md when
+                     omitted; for a git target that name comes from the remote,
+                     so pass it
   --allow-unauthenticated
                      Accept a git snapshot whose manifest tags are missing or
                      cannot be checked (a keyring that will not unwrap). Only
@@ -48,17 +50,21 @@ restic and coreutils - the chain printed on the recovery card.
 
 By hand, keyring.age comes from the target root: copied from the directory for a
 local target, and named with --keyring for an s3 target, which you fetch yourself
-with whatever reaches that store. A git target needs neither --keyring nor
---target-name, but see below for what --keyring adds: the script clones the backup branch, authenticates the parts
-manifest and MANIFEST.json under the target's manifest subkey, checks every part
-against the parts manifest, and decrypts them with the identity (git, age,
-openssl, tar and zstd or gzip). It refuses a snapshot that carries no tag unless
---allow-unauthenticated is given. The keyring that derives the tags' key is the
-branch's own, so without --keyring the tags show that the snapshot matches that
-keyring, not that the keyring is yours: anyone who can push to the remote and
-knows a recipient's public key can write a matching pair. Pass --keyring with a
-copy of keyring.age you trust and the script refuses a branch whose keyring
-differs.
+with whatever reaches that store.
+
+A git target runs a longer chain: the script clones the backup branch,
+authenticates the parts manifest and MANIFEST.json under the target's manifest
+subkey, checks every part against the parts manifest, and decrypts them with the
+identity (git, age, openssl, tar and zstd or gzip). It refuses a snapshot that
+carries no tag unless --allow-unauthenticated is given. Two inputs come from the
+remote unless you give them. The keyring that derives the tags' key is the
+branch's own, so the tags show that the snapshot matches that keyring, not that
+the keyring is yours: anyone who can push to the remote and knows a recipient's
+public key can write a matching pair. Pass --keyring with a copy of keyring.age
+you trust and the script refuses a branch whose keyring differs. The target name
+keys the tags, so pass --target-name and the branch cannot choose which target's
+tags it passes for. exocomp restore cannot pin a keyring, so --keyring makes the
+script run this chain even when an exocomp binary is present.
 
 Reach a private git remote with a credential helper, an SSH key or GIT_ASKPASS
 rather than a token written into the URL. Any URL userinfo this script prints is
@@ -74,12 +80,21 @@ redact() {
     sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/[:space:]]*@#\1***@#g'
 }
 
+# clean_line prints its arguments as one line with the URL userinfo masked and
+# every control character dropped. Names and values that came from a remote can
+# carry escape sequences or newlines, which would redraw the terminal or forge a
+# line of this script's own output.
+clean_line() {
+    printf '%s' "$*" | redact | tr -d '[:cntrl:]'
+    echo
+}
+
 say() {
-    echo "recovery.sh: $*" | redact
+    echo "recovery.sh: $(clean_line "$*")"
 }
 
 fail() {
-    echo "recovery.sh: $*" | redact >&2
+    echo "recovery.sh: $(clean_line "$*")" >&2
     exit 1
 }
 
@@ -426,7 +441,7 @@ keyring_generation() {
 # regular files, authenticate MANIFEST.json, and refuse a keyring older than the
 # snapshot. The archive is zstd or gzip as the snapshot's name says.
 manual_restore_git() {
-    require_tools git age openssl tar cat cmp sha256sum awk wc od tr sed grep cut
+    require_tools git age openssl tar cat cmp find head sort uniq sha256sum awk wc od tr sed grep cut
 
     repo=$(git_url "$from")
 
@@ -435,16 +450,35 @@ manual_restore_git() {
     trap 'rm -rf "$work"' EXIT INT TERM
 
     say "cloning the backup branch of $repo"
-    git clone --quiet --branch backup --depth 1 "$repo" "$work/clone" 2> "$work/clone.err" \
-        || { redact < "$work/clone.err" >&2; fail "git could not clone the backup branch of $repo"; }
+    # The checkout runs no filter or hook the remote could name, and nothing the
+    # remote prints reaches the terminal unmasked.
+    git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c protocol.ext.allow=never \
+        -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+        clone --quiet --branch backup --depth 1 -- "$repo" "$work/clone" 2> "$work/clone.err" \
+        || {
+            while IFS= read -r line; do say "git: $line"; done < "$work/clone.err"
+            fail "git could not clone the backup branch of $repo"
+        }
     clone="$work/clone"
 
-    # Newest parts manifest by name, which carries a sortable UTC stamp.
+    # Every file is read by name from the top of the tree, and a link there could
+    # point a read at a file on this host.
+    if [ -n "$(find "$clone" -path "$clone/.git" -prune -o -type l -print | head -n 1)" ]; then
+        fail "the backup branch of $repo holds a symbolic link"
+    fi
+
+    # The leg force-pushes one snapshot over the branch, so more than one is not
+    # a state it writes.
     pm=""
+    npm=0
     for f in "$clone"/snapshot-*.age.parts.json; do
-        if [ -f "$f" ] && [ ! -L "$f" ]; then pm="$f"; fi
+        if [ -f "$f" ]; then
+            pm="$f"
+            npm=$((npm + 1))
+        fi
     done
     [ -n "$pm" ] || fail "the backup branch of $repo holds no snapshot-*.age.parts.json"
+    [ "$npm" -eq 1 ] || fail "the backup branch of $repo holds $npm snapshots, and the backup leg keeps exactly one"
     snapshot=$(basename "$pm" .parts.json)
     case "$snapshot" in
         *.tar.zst.age) require_tools zstd; unpack="zstd -d -c" ;;
@@ -452,8 +486,14 @@ manual_restore_git() {
         *) fail "$snapshot is neither a .tar.zst nor a .tar.gz snapshot" ;;
     esac
 
-    [ -n "$target_name" ] || target_name=$(sed -n 's/^target-name: *//p' "$clone/RECOVERY.md" 2>/dev/null | head -n 1)
-    [ -n "$target_name" ] || fail "target name unknown: pass --target-name, or restore from a branch holding RECOVERY.md"
+    # The target name keys the tags, so a name read from the branch lets the
+    # branch pick which target's tags it passes for.
+    [ -n "$target_name" ] || target_name=$(ask "target name the backup was written under: ") || true
+    if [ -z "$target_name" ]; then
+        target_name=$(sed -n 's/^target-name: *//p' "$clone/RECOVERY.md" 2>/dev/null | head -n 1)
+        [ -n "$target_name" ] || fail "target name unknown: pass --target-name"
+        say "warning: the target name $target_name comes from the backup branch itself, so it does not show which target this is: pass --target-name"
+    fi
 
     if [ -n "$keyring" ]; then
         [ -r "$keyring" ] || fail "keyring file $keyring is not readable"
@@ -471,6 +511,8 @@ manual_restore_git() {
     fi
 
     require_tag "$pm" "$pm.mac" "$snapshot.parts.json"
+    [ "$(json_str snapshot "$pm")" = "$snapshot" ] \
+        || fail "$snapshot.parts.json describes a different snapshot than its file name"
 
     # The parts manifest lists the parts in order, with a digest for each and for
     # the whole. The part files are read by those names, not by a glob.
@@ -519,6 +561,11 @@ manual_restore_git() {
     # owners, modes or paths.
     tar -tvf "$work/snapshot.tar" | cut -c1 > "$work/types.list" || fail "could not list the snapshot archive"
     tar -tf "$work/snapshot.tar" > "$work/names.list" || fail "could not list the snapshot archive"
+    [ "$(wc -l < "$work/types.list")" -eq "$(wc -l < "$work/names.list")" ] \
+        || fail "the snapshot archive holds an entry whose name spans lines"
+    if [ -n "$(sort "$work/names.list" | uniq -d | head -n 1)" ]; then
+        fail "the snapshot archive holds two entries of the same name"
+    fi
     if grep -qv '^-$' "$work/types.list"; then
         fail "the snapshot archive holds an entry that is not a regular file"
     fi
@@ -569,6 +616,12 @@ require_tools() {
 # No container runtime is required to restore: recovery must not depend on
 # anything but the files and off-the-shelf tools (AGENTS.md invariant 7).
 echo "recovery.sh $VERSION: dest=$dest"
+# exocomp restore has no way to pin a keyring, so a pin is only honoured by the
+# chain run here.
+if [ -n "$exocomp_bin" ] && [ -n "$keyring" ] && [ -n "$from" ] && is_git_target "$from"; then
+    echo "recovery.sh: exocomp restore cannot pin a keyring; running the git chain by hand to honour --keyring" >&2
+    exocomp_bin=""
+fi
 if [ -z "$exocomp_bin" ]; then
     echo "recovery.sh: no exocomp binary; running the recovery card's chain by hand" >&2
     manual_restore
