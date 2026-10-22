@@ -90,7 +90,9 @@ operator-gated, recorded on the job row, and surfaced after the fact: the job de
 wears an `unsandboxed` chip, the list names it beside the source, the log opens with an
 attributed band, and `jobs list --output json` carries `privileged`. Reaching a host over
 SSH is the sandbox-preserving default; reserve `--privileged` for work that must run
-unsandboxed on the controller itself.
+unsandboxed on the controller itself. An unsandboxed ansible job keeps the daemon's HOME
+but still gets its local temp and ssh control directory under a per-job directory, so a
+read-only source checkout does not fail the run.
 
 It sets the tier of the job alone. The dependency resolvers, the per-source `uv` venv and
 the `ansible-galaxy` collections, follow the sandbox tier of the process that runs the
