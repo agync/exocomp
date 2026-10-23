@@ -108,6 +108,23 @@ Both verbs run through the one queue with the same credential and isolation mode
   `exocomp approval link <id>` prints its decision link. It reuses the same gate a
   policy-gated tofu apply does.
 
+### How a run reads in the web jobs list
+
+The web UI's jobs list names an ad-hoc run by what it ran. The first line is the
+module and the host pattern (`command · host-a`), taken from the job's argv by flag name.
+The second line, in monospace, is the module args or command, clipped to one line with
+the full text on hover and in the job detail's Command tile. A `run-cli` job keeps its
+`cli:<tool>` title and shows the tool arguments on that second line. Source and check-mode
+facts stay on the right of it. On a phone the command line sits under the title.
+
+The command text is shown only to an operator token. Before it is rendered, every
+sealed secret value is scrubbed from it, the same filter the job log applies. If the
+surface cannot open every sealed secret, it shows no command text at all, so a read-only
+or approve token and a degraded envelope both see the title alone. The scrub covers the
+list row and the Command tile. The Schedule and Rerun dialogs on the job detail still show
+the argv as recorded to an operator, since both replay it. `GET /api/v1/jobs` is
+unchanged: it still omits args.
+
 ### Injection posture
 
 The host pattern, the module name, the module args, and the command are guarded
