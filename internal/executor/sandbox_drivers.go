@@ -66,12 +66,13 @@ func runUnsandboxed(ctx context.Context, plain Driver, caps Caps, spec Spec, sin
 	return plain.Run(ctx, spec, sink)
 }
 
-// runPrivileged runs an ansible job unsandboxed. HOME, TMPDIR and the remote
-// temp stay the daemon's own, because the run asked out of the sandbox, but the
-// two scratch paths ansible.cfg commonly sets relative to the checkout are
-// still pinned to a per-job directory: a read-only source checkout (a
-// containerised daemon mounts it so) would otherwise fail at startup creating
-// local_tmp or the ssh control sockets under it.
+// runPrivileged runs an ansible job unsandboxed. HOME and TMPDIR stay the
+// daemon's own, because the run asked out of the sandbox, but the scratch paths
+// ansible.cfg commonly sets relative to the checkout are still pinned: local
+// temp and the ssh control sockets to a per-job directory, and remote temp to
+// remoteTmp. A read-only source checkout (a containerised daemon mounts it so)
+// would otherwise fail creating them under it, at startup for local temp and
+// at the first task for a relative remote temp on a local connection.
 func (a *sandboxedAnsible) runPrivileged(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
 	job, cleanup, err := newJobDir(a.opts.PrivateDirRoot)
 	if err != nil {
@@ -85,6 +86,7 @@ func (a *sandboxedAnsible) runPrivileged(ctx context.Context, spec Spec, sink Ev
 	opts := a.opts
 	opts.Env = append(slices.Clone(opts.Env),
 		"ANSIBLE_LOCAL_TEMP="+job.tmp,
+		"ANSIBLE_REMOTE_TMP="+remoteTmp,
 		"ANSIBLE_SSH_CONTROL_PATH_DIR="+controlPath,
 	)
 	return runUnsandboxed(ctx, NewAnsible(opts), a.sandbox.Caps, spec, sink)

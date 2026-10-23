@@ -395,20 +395,22 @@ func TestLocalConnectionTarget(t *testing.T) {
 }
 
 // TestSandboxedAnsiblePrivilegedPinsScratchOffTheSource: an unsandboxed run
-// still gets ansible's local temp and ssh control directory on per-job paths,
+// still gets ansible's local temp and ssh control directory on per-job paths and its
+// remote temp pinned,
 // so a read-only source checkout whose ansible.cfg sets them relative cannot
 // fail the run at startup. Dropping runPrivileged's env makes this red.
 func TestSandboxedAnsiblePrivilegedPinsScratchOffTheSource(t *testing.T) {
 	t.Parallel()
 
 	script := "echo \"local_tmp=$ANSIBLE_LOCAL_TEMP\"\necho \"control=$ANSIBLE_SSH_CONTROL_PATH_DIR\"\n" +
+		"echo \"remote_tmp=$ANSIBLE_REMOTE_TMP\"\n" +
 		"[ -d \"$ANSIBLE_LOCAL_TEMP\" ] && [ -d \"$ANSIBLE_SSH_CONTROL_PATH_DIR\" ] && echo dirs-exist\n"
 	res, sink := runSandboxedEligible(t, script, true)
 	if res.ExitCode != 0 {
 		t.Fatalf("run exit = %d, want 0:\n%s", res.ExitCode, strings.Join(sink.msgs(), "\n"))
 	}
 	out := strings.Join(sink.msgs(), "\n")
-	for _, want := range []string{"local_tmp=/", "control=/", "dirs-exist"} {
+	for _, want := range []string{"local_tmp=/", "control=/", "remote_tmp=" + remoteTmp, "dirs-exist"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("privileged run output lacks %q:\n%s", want, out)
 		}
