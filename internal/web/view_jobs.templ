@@ -92,7 +92,16 @@ templ jobsRow(j jobRow, base string) {
 			<span class="num">{ itoa64(j.ID) }</span>
 			<span class="cell">
 				<b class="mono">{ j.Title }</b>
-				<small class="mono">{ j.SourceMeta }</small>
+				if j.Cmd != "" {
+					<span class="sub">
+						<small class="mono cmd" title={ j.CmdFull }>{ j.Cmd }</small>
+						if j.SourceMeta != "" {
+							<small class="mono src">{ j.SourceMeta }</small>
+						}
+					</span>
+				} else {
+					<small class="mono">{ j.SourceMeta }</small>
+				}
 			</span>
 			<span class="cell cell--state">
 				@chip(j.StateClass(), string(j.State))
@@ -274,6 +283,8 @@ templ configTileBox(t configTile) {
 		<span>{ t.Label }</span>
 		if t.Link != "" {
 			<b><a href={ templ.SafeURL(t.Link) }>{ t.Value }</a></b>
+		} else if t.Hover != "" {
+			<b title={ t.Hover }>{ t.Value }</b>
 		} else {
 			<b>{ t.Value }</b>
 		}

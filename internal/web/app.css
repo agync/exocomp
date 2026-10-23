@@ -1587,6 +1587,13 @@ body { overflow-x: clip; }
   font: var(--type-log); color: var(--ink-500);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* An ad-hoc or CLI run's second line: the command text takes the slack and
+ * ellipsizes, the source meta keeps its own width at the right. The row stays
+ * in the 52px family. */
+.jobs-row .cell .sub { display: flex; gap: 10px; min-width: 0; }
+.jobs-row .cell .sub small { min-width: 0; }
+.jobs-row .cell .sub small.cmd { flex: 1 1 auto; color: var(--ink-400); }
+.jobs-row .cell .sub small.src { flex: 0 1 auto; max-width: 45%; }
 .jobs-row .reason { font: 400 12px var(--font-mono); color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .jobs-row .reason--degraded { color: var(--signal-wait); }
 
@@ -2147,15 +2154,18 @@ body { overflow-x: clip; }
   /* The jobs row's phone form (review P2): line 1 is # · title · chip (the
    * playbook cell's source meta drops — the source fact moves to line 2), and
    * line 2 is the one flat mono-12 meta cell. The desktop trigger/ran cells
-   * hide; their facts are the .cell--meta qmeta line. */
-  .jobs-row:not(.queue-row) .line:first-child .cell small { display: none; }
+   * hide; their facts are the .cell--meta qmeta line. An ad-hoc or CLI row
+   * keeps its .cmd command line under the title, so line 1 is two text lines
+   * tall for those rows only. */
+  .jobs-row:not(.queue-row) .line:first-child .cell small:not(.cmd) { display: none; }
   /* Line 1 is ONE row at 390px (integrator pass + R3): #id · title · chip —
    * the number reads "#id ·" beside the title (neither floats), the title cell
    * shrinks and ellipsizes, the chip pins right via margin-left:auto, and the
    * desktop state-cell reason (already the line-2 meta's own fact) drops so
-   * the row never wraps or piles up. The reason node stays for the desktop
+   * the row never wraps sideways. The .cmd line ellipsizes like the title. The reason node stays for the desktop
    * state column. */
   .jobs-row:not(.queue-row) .line:first-child { justify-content: flex-start; }
+  .jobs-row:not(.queue-row) .line:first-child .num { flex: none; }
   .jobs-row:not(.queue-row) .line:first-child .num::before { content: "#"; }
   .jobs-row:not(.queue-row) .line:first-child .num::after { content: " ·"; }
   .jobs-row:not(.queue-row) .line:first-child .cell { flex: 0 1 auto; min-width: 0; }

@@ -592,17 +592,16 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 	return st.GetJob(ctx, job.ID)
 }
 
-// knownSecrets collects the plaintexts the redactor must scrub. A secret that
-// will not open is reported by name only and skipped: an unreadable row must
-// not stop a run.
-func knownSecrets(ctx context.Context, st *store.Store, env *secrets.Envelope, warn io.Writer) [][]byte {
+// openSecrets opens every sealed secret. unopened names the rows that would
+// not open; err is a failure to list them at all. Either means the returned
+// plaintexts are an incomplete set.
+func openSecrets(ctx context.Context, st *store.Store, env *secrets.Envelope) (known [][]byte, unopened []string, err error) {
 	rows, err := st.ListSecrets(ctx)
 	if err != nil {
-		_, _ = fmt.Fprintf(warn, "WARNING: list secrets for redaction: %v\n", err)
-		return nil
+		return nil, nil, err
 	}
 
-	known := make([][]byte, 0, len(rows))
+	known = make([][]byte, 0, len(rows))
 	for _, row := range rows {
 		pt, err := env.OpenSecret(secrets.SealedSecret{
 			Name:       row.Name,
@@ -611,12 +610,42 @@ func knownSecrets(ctx context.Context, st *store.Store, env *secrets.Envelope, w
 			Ciphertext: row.Ciphertext,
 		})
 		if err != nil {
-			_, _ = fmt.Fprintf(warn, "WARNING: secret %q not opened for redaction\n", row.Name)
+			unopened = append(unopened, row.Name)
 			continue
 		}
 		known = append(known, pt)
 	}
+	return known, unopened, nil
+}
+
+// knownSecrets collects the plaintexts the redactor must scrub. A secret that
+// will not open is reported by name only and skipped: an unreadable row must
+// not stop a run.
+func knownSecrets(ctx context.Context, st *store.Store, env *secrets.Envelope, warn io.Writer) [][]byte {
+	known, unopened, err := openSecrets(ctx, st, env)
+	if err != nil {
+		_, _ = fmt.Fprintf(warn, "WARNING: list secrets for redaction: %v\n", err)
+		return nil
+	}
+	for _, name := range unopened {
+		_, _ = fmt.Fprintf(warn, "WARNING: secret %q not opened for redaction\n", name)
+	}
 	return known
+}
+
+// completeRedactor builds a redactor only from a complete secret set. The web
+// surface shows text derived from a job's argv on the strength of this
+// filter, so a secret that would not open makes it refuse rather than scrub
+// partially.
+func completeRedactor(ctx context.Context, st *store.Store, env *secrets.Envelope) (*secrets.Redactor, error) {
+	known, unopened, err := openSecrets(ctx, st, env)
+	if err != nil {
+		return nil, fmt.Errorf("list secrets for redaction: %w", err)
+	}
+	if len(unopened) > 0 {
+		return nil, fmt.Errorf("%d secrets did not open for redaction", len(unopened))
+	}
+	return secrets.NewRedactor(known), nil
 }
 
 // drainAndTail runs the queue to completion while printing the job's events
