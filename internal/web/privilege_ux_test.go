@@ -196,3 +196,39 @@ func TestJobRerunDialogSandboxedOffersEscalation(t *testing.T) {
 		t.Errorf("rerun dialog must offer the privileged toggle:\n%s", body)
 	}
 }
+
+// TestRerunDialogNamesPrivilegedOriginal: a rerun of an unsandboxed job says
+// so beside the Privileged toggle, so the sandboxed rerun's failures point at
+// the unticked box. The toggle stays off: privilege is never pre-granted. A
+// sandboxed original carries no note.
+func TestRerunDialogNamesPrivilegedOriginal(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	recap := []string{"PLAY RECAP", "node0 : ok=0 changed=0 unreachable=0 failed=1 skipped=0"}
+
+	block := func(args store.JobArgs) string {
+		job := seedJobWithRecap(t, h, store.StateFailed, 2, recap, nil, args)
+		_, page := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+		_, rest, found := strings.Cut(page, `<div class="privileged">`)
+		if !found {
+			t.Fatal("rerun dialog has no privileged block")
+		}
+		rest, _, _ = strings.Cut(rest, "Operator only")
+		return rest
+	}
+
+	got := block(store.JobArgs{Argv: []string{"/bin/true", "deploy/site.yml"}, Privileged: true})
+	if !strings.Contains(got, "This rerun runs sandboxed unless you switch the toggle on.") {
+		t.Errorf("privileged original: no note beside the toggle: %s", got)
+	}
+	if !strings.Contains(got, `name="privileged"`) || strings.Contains(got, "checked") {
+		t.Errorf("the privileged toggle must exist and start off: %s", got)
+	}
+
+	plain := block(store.JobArgs{Argv: []string{"/bin/true", "deploy/site.yml"}})
+	if strings.Contains(plain, "This rerun runs sandboxed") {
+		t.Errorf("sandboxed original carries the privileged note: %s", plain)
+	}
+}
