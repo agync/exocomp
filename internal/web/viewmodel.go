@@ -2096,6 +2096,11 @@ type jobRow struct {
 	// run's playbook path relativized against its working directory, else the
 	// runbook label.
 	Title string
+	// Cmd is the command text of an ad-hoc or CLI run, redacted, on one line
+	// and clipped for the row; CmdFull is the same text unclipped for the hover.
+	// Both are empty on every other job and on rows built outside the jobs list.
+	Cmd     string
+	CmdFull string
 	// SourceMeta is the meta under the playbook: "{Source} · check mode".
 	SourceMeta string
 	// TriggerLabel/TriggerMeta render the TRIGGER cell's two lines — "Rerun" /
@@ -3168,6 +3173,8 @@ type configTile struct {
 	Label string
 	Value string
 	Link  string
+	// Hover is the full text of a value the tile clips on desktop.
+	Hover string
 	// Cause marks the tile that carried the outcome's inset state ring.
 	Cause bool
 	// Wait tints the value with the wait signal ("on · settles degraded").
@@ -3403,8 +3410,14 @@ func andList(names []string) string {
 // jobTitle names a job the way the PLAYBOOK cell and the run card do: an
 // ansible run's playbook path relativized against its working directory (a
 // source run reads "deploy/aio-sandbox.yml", not the checkout's absolute
-// path), else the runbook label.
+// path), else the runbook label. An ad-hoc ansible run reads "module · host
+// pattern", taken from its argv by flag name: the runbook label is only
+// "command" or "ansible" and the argv's last element is whatever flag or
+// module argument happened to come last.
 func jobTitle(j store.Job) string {
+	if t := jobTitleOf(j); t != "" {
+		return t
+	}
 	if j.Kind == executor.KindAnsible && len(j.Args.Argv) > 0 && j.Runbook != "command" {
 		return relTo(j.Args.Dir, j.Args.Argv[len(j.Args.Argv)-1])
 	}

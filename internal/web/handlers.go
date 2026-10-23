@@ -560,8 +560,12 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	vm := dashboardVM{Page: s.pageFor(r, "Jobs", "jobs")}
 	now := s.now()
+	redact := s.commandRedactor(r)
 	for _, j := range jobs {
-		vm.Queue = append(vm.Queue, s.jobRowForList(r.Context(), j, now))
+		row := s.jobRowForList(r.Context(), j, now)
+		cmd := commandOf(j, redact)
+		row.Cmd, row.CmdFull = cmd.Glance, cmd.Full
+		vm.Queue = append(vm.Queue, row)
 	}
 	// The count moves to the app bar (SPEC §2.3): the list's own count span is
 	// dropped from the markup, and the app bar meta names the ordering.
@@ -778,7 +782,7 @@ func (s *Server) jobDetailVMFor(w http.ResponseWriter, r *http.Request) (jobDeta
 		}
 	}
 
-	vm.RunCard = s.runCardVM(r.Context(), job, source, src, facts, actorName, face, runner, rerunOf(events))
+	vm.RunCard = s.runCardVM(r.Context(), job, source, src, facts, actorName, face, runner, rerunOf(events), s.commandRedactor(r))
 	vm.Verdict = s.jobVerdict(job, facts, events)
 	// A kind=doctor job's findings (SPEC §7 A1): the self-check's subsystem
 	// entries as rows, parsed from the job's own structured events. Every
@@ -1336,12 +1340,12 @@ func shortSHA(sha string) string {
 // the verdict number, and the RUN CONFIGURATION tile grid. source is the
 // resolved source name (Args.Source or the reverse Dir lookup).
 func (s *Server) runCardVM(ctx context.Context, job store.Job, source string, src *store.Source,
-	facts jobOutcomeFacts, actorName, face, runner string, rerunOfID int64) jobRunCardVM {
+	facts jobOutcomeFacts, actorName, face, runner string, rerunOfID int64, redact func(string) string) jobRunCardVM {
 	rc := jobRunCardVM{
 		State: job.State, Tool: job.Kind, CheckMode: hasFlag(job.Args.Argv, "--check"),
 		Privileged: job.Args.Privileged,
 		RerunOf:    rerunOfID, Title: jobTitle(job),
-		RanLine: ranLine(job), Tiles: s.runCardTiles(ctx, source, job, src),
+		RanLine: ranLine(job), Tiles: s.runCardTiles(ctx, source, job, src, redact),
 	}
 	verb := "ran on "
 	if job.State == store.StateQueued || job.State == store.StateAwaitingApproval {
@@ -1365,9 +1369,13 @@ func (s *Server) runCardVM(ctx context.Context, job store.Job, source string, sr
 // runCardTiles builds the RUN CONFIGURATION tile grid. The Tolerate tile is the
 // cause tile on a degraded run: it wears the outcome's inset state ring. source
 // is the resolved source name (Args.Source or the reverse Dir lookup).
-func (s *Server) runCardTiles(ctx context.Context, source string, job store.Job, src *store.Source) []configTile {
+func (s *Server) runCardTiles(ctx context.Context, source string, job store.Job, src *store.Source,
+	redact func(string) string) []configTile {
 	var tiles []configTile
 	argv := job.Args.Argv
+	if cmd := commandOf(job, redact); cmd.Full != "" {
+		tiles = append(tiles, configTile{Label: "Command", Value: cmd.Full, Hover: cmd.Full})
+	}
 	if source != "" {
 		tile := configTile{Label: "Source", Value: source + " ↗"}
 		if src != nil {

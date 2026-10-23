@@ -20,6 +20,7 @@ import (
 	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/mcp"
 	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -73,7 +74,13 @@ type Options struct {
 	// Sealer seals plaintext into the envelope for the sensitive write surface
 	// (secrets add/rotate, a git source's deploy key). A nil Sealer (a web-only
 	// process holding no envelope) fail-closes those routes to a 503.
-	Sealer   Sealer
+	Sealer Sealer
+	// Redactor resolves the filter that scrubs sealed secret values out of
+	// text the surface derives from a job's recorded argv (the jobs list's
+	// command line). It is a function so a secret sealed after the surface
+	// started is still scrubbed. It must fail closed: an error, a nil filter,
+	// or no Redactor at all drops that text rather than show it unscrubbed.
+	Redactor func(context.Context) (*secrets.Redactor, error)
 	Insecure bool
 	// Fingerprint is the LAN certificate's SHA-256, shown on the login screen
 	// for trust-on-first-use pinning. Empty under --insecure-http.
@@ -108,6 +115,7 @@ type Server struct {
 	maint       Maintenance
 	ntfy        NtfyDriver
 	sealer      Sealer
+	redactor    func(context.Context) (*secrets.Redactor, error)
 	insecure    bool
 	fingerprint string
 	version     string
@@ -227,6 +235,7 @@ func New(opts Options) (*Server, error) {
 		maint:                  opts.Maint,
 		ntfy:                   opts.Ntfy,
 		sealer:                 opts.Sealer,
+		redactor:               opts.Redactor,
 		insecure:               opts.Insecure,
 		fingerprint:            opts.Fingerprint,
 		version:                opts.Version,

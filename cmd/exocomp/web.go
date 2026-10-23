@@ -193,12 +193,15 @@ func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope
 		eng = e
 	}
 	srv, err := web.New(web.Options{
-		Store:       st,
-		Deriver:     env,
-		Decider:     decider,
-		Engine:      eng,
-		Plans:       env,
-		Sealer:      env,
+		Store:   st,
+		Deriver: env,
+		Decider: decider,
+		Engine:  eng,
+		Plans:   env,
+		Sealer:  env,
+		Redactor: func(c context.Context) (*secrets.Redactor, error) {
+			return completeRedactor(c, st, env)
+		},
 		Maint:       maint,
 		Ntfy:        ntfy,
 		Insecure:    insecure,
