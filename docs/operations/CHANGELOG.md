@@ -14,6 +14,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.4.0](https://github.com/agync/exocomp/compare/v0.3.2...v0.4.0) (2026-10-23)
+
+
+### Features
+
+* **web:** name ad-hoc jobs by module and host ([9f3b6bc](https://github.com/agync/exocomp/commit/9f3b6bcec50a6ccc90f458965b6af991caab171c))
+
+
+### Bug Fixes
+
+* **executor:** pin remote temp when privileged ([8dd51af](https://github.com/agync/exocomp/commit/8dd51af79fe9f2d357b00f10f09a392ad265f189))
+
 ## [0.3.2](https://github.com/agync/exocomp/compare/v0.3.1...v0.3.2) (2026-10-22)
 
 
