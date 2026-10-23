@@ -91,8 +91,8 @@ wears an `unsandboxed` chip, the list names it beside the source, the log opens 
 attributed band, and `jobs list --output json` carries `privileged`. Reaching a host over
 SSH is the sandbox-preserving default; reserve `--privileged` for work that must run
 unsandboxed on the controller itself. An unsandboxed ansible job keeps the daemon's HOME
-but still gets its local temp and ssh control directory under a per-job directory, so a
-read-only source checkout does not fail the run.
+but still gets its local temp and ssh control directory under a per-job directory and its
+remote temp under `$HOME/.ansible/tmp`, so a read-only source checkout does not fail the run.
 
 It sets the tier of the job alone. The dependency resolvers, the per-source `uv` venv and
 the `ansible-galaxy` collections, follow the sandbox tier of the process that runs the
