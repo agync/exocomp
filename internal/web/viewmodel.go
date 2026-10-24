@@ -1128,9 +1128,10 @@ func (vm sourcesVM) ShowEnabledColumn() bool {
 
 // scheduleRow is one cron schedule: its kind, expression, next/last fire, and
 // the outcome of the job its last fire enqueued — so a drift-check schedule's
-// last drift result reads at a glance. Argv/Target/ConcurrencyKey/JitterS/
-// TolerateUnreachable and LastRun are the rest of the row's spec, shown only
-// in its detail modal (schedulesList) — the table itself stays scannable.
+// last drift result reads at a glance. Argv/Target/Source/ConcurrencyKey/JitterS/
+// TolerateUnreachable and LastRun are the rest of the row's spec, shown in its
+// detail modal (schedulesList) — the table itself stays scannable, naming only
+// the Target and, for a play that runs from one, the Source it inherits from.
 type scheduleRow struct {
 	Name                string
 	Kind                string // shell|backup|tofu-plan|play|… (free kind string)
@@ -1143,6 +1144,7 @@ type scheduleRow struct {
 	Enabled             bool
 	Argv                []string
 	Target              string
+	Source              string
 	ConcurrencyKey      string
 	JitterS             int
 	TolerateUnreachable bool

@@ -410,7 +410,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<p class=\"meta\">Every ansible run from this source, including one a rule fires, injects this binding's env unless the run names its own. Scheduled, handoff and bootstrap plays name no source and do not inherit it. The vault project stays per run.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<p class=\"meta\">Every ansible run from this source, including one a rule fires or a play schedule names, injects this binding's env unless the run names its own. Handoff and bootstrap plays name no source and do not inherit it. The vault project stays per run.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
