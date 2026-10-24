@@ -184,6 +184,13 @@ func runHostOnboard(ctx context.Context, out, warn io.Writer, hosts []string, ro
 // the envelope and never written to disk on a run.
 func ensureFleetKey(ctx context.Context, st *store.Store, env *secrets.Envelope) (string, error) {
 	if row, err := st.GetSecret(ctx, fleetKeySecret); err == nil {
+		// A row under the fleet key's name that onboarding did not seal (one
+		// added by hand or through another face) is not trusted as the key
+		// every host will authorize.
+		if row.Kind != fleetKeyKind {
+			return "", fmt.Errorf("host onboard: %s holds a %s secret, not the fleet key; "+
+				"remove it with `exocomp --local secrets rm %s` and onboard again", fleetKeySecret, row.Kind, fleetKeySecret)
+		}
 		pem, err := env.OpenSecret(secrets.SealedSecret{
 			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
 		})

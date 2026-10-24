@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -47,11 +46,5 @@ func (s *Server) handleKitReprint(w http.ResponseWriter, r *http.Request) {
 // write verb (arm, add-target, rotate) calls it exactly once; the reprint verb
 // resets it. A counter that has not been seeded reads as zero.
 func (s *Server) bumpKitChanges(ctx context.Context) {
-	v := 0
-	if raw, err := s.store.GetSetting(ctx, store.SettingKitChanges); err == nil {
-		if n, perr := strconv.Atoi(raw); perr == nil {
-			v = n
-		}
-	}
-	_ = s.store.PutSetting(ctx, store.SettingKitChanges, strconv.Itoa(v+1))
+	s.service().BumpKitChanges(ctx)
 }

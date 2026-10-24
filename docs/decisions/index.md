@@ -32,6 +32,7 @@ of fact land in [the evolution log](../log.md).
 | [0024](0024-source-run-secrets-default.md) | An operator-set default run-secret binding name per source, filled into every ansible run that names it and passes none at queue admission; an explicit binding wins and repo content can never choose one | Accepted |
 | [0025](0025-scheduled-play-source.md) | A play schedule may name a registered source; a fire runs from its checkout like a playbook rule and inherits its default egress and run-secret binding, and a schedule without one is unchanged | Accepted |
 | [0026](0026-remote-first-cli.md) | A `hosts.toml` default sends every command to that daemon; `--local` is the one opt-out; every command is remote-capable, exempt, local-only on purpose, or pending its route | Accepted |
+| [0027](0027-credential-plane-over-the-api.md) | Sources, secrets and run-secrets get `/api/v1` routes under the operator scope, bearer only; a value only travels in, exocomp's own transport keys are neither bound nor replaced over the API, and minting stays off it | Accepted |
 
 Some decisions are recorded elsewhere because they are shape rather than choice: the platform
 support tiers are in

@@ -1,6 +1,7 @@
 package source_test
 
 import (
+	"strings"
 	"testing"
 
 	"exocomp.dev/exocomp/internal/source"
@@ -52,5 +53,27 @@ func TestLooksLikeGitURL(t *testing.T) {
 		if got := source.LooksLikeGitURL(tc.raw); got != tc.want {
 			t.Errorf("LooksLikeGitURL(%q) = %v, want %v", tc.raw, got, tc.want)
 		}
+	}
+}
+
+func TestValidRef(t *testing.T) {
+	t.Parallel()
+	for ref, want := range map[string]bool{
+		"main": true, "v1.2.3": true, "refs/tags/v1": true, "0a1b2c": true,
+		"-x": false, "--upload-pack=x": false, "main branch": false, "main\n": false,
+	} {
+		if got := source.ValidRef(ref); got != want {
+			t.Errorf("ValidRef(%q) = %v, want %v", ref, got, want)
+		}
+	}
+}
+
+// Sync refuses a ref git would read as an option before it runs git, whatever
+// face stored the ref.
+func TestSyncRefusesAnOptionShapedRef(t *testing.T) {
+	t.Parallel()
+	_, err := source.Sync(t.Context(), source.SyncOptions{Root: t.TempDir(), URL: "https://127.0.0.1:1/x.git", Ref: "--force"})
+	if err == nil || !strings.Contains(err.Error(), "not a git ref") {
+		t.Fatalf("want a ref refusal, got %v", err)
 	}
 }
