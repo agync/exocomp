@@ -17,7 +17,8 @@ These flags apply across all CLI commands:
 | Flag | Env Variable | Description |
 |---|---|---|
 | `--output <format>` | `EXOCOMP_OUTPUT` | Output formatting: `text` (default) or `json` (also `yaml` for export) |
-| `--remote <target>` | `EXOCOMP_REMOTE` | Drive a remote daemon over HTTPS / LAN (pinned name or URL); commands without a remote path refuse it |
+| `--remote <target>` | `EXOCOMP_REMOTE` | Drive a remote daemon over HTTPS / LAN (pinned name or URL); with neither set, the `hosts.toml` default from `exocomp login` is used. Commands without a remote path refuse a selected remote |
+| `--local` | — | Act on this machine's data dir even when a remote is configured |
 | `--token <token>` | `EXOCOMP_TOKEN` | Bearer token for remote daemon authentication |
 | `--idempotency-key <key>` | `EXOCOMP_IDEMPOTENCY_KEY` | Deduplicate mutating commands to one job |
 | `-y, --assume-yes` | — | Answer yes to destructive confirmations (scripts, CI) |
@@ -29,7 +30,8 @@ These flags apply across all CLI commands:
 
 ### Automation & Execution
 - `exocomp playbook run <path>`: Run an Ansible playbook against a source.
-- `exocomp command run <cmd>`: Run an ad-hoc shell command on target nodes.
+- `exocomp command --host <pattern> [--shell] [--user-session] [--become] -- <cmd...>`: Run an ad-hoc command on target nodes through the ansible command module (`--shell` for the shell module). `--user-session` runs through the shell module and sets `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` to the connecting user's session when they are unset, so a `systemctl --user` call reaches it.
+- `exocomp ansible --host <pattern> -m <module> [-a <args>]`: Run any ansible module on target nodes.
 - `exocomp workspace plan <name>`: Generate and seal an OpenTofu execution plan.
 - `exocomp workspace apply <name>`: Apply an OpenTofu workspace or sealed plan.
 - `exocomp provision run <workspace> <playbook>`: Execute chained apply → await SSH → onboard → configure workflow.
@@ -44,7 +46,7 @@ These flags apply across all CLI commands:
 - `exocomp source run-secrets <name> [binding]`: Set the default run-secret binding a source's ansible runs inherit; an explicit `--run-secrets` wins.
 - `exocomp secrets add/list/replace/rm`: Manage age secrets envelope entries.
 - `exocomp run-secret add/list/rm`: Bind sealed secrets to named environment sets for runs.
-- `exocomp host onboard/known-hosts`: Onboard fleet nodes and inspect trusted host keys.
+- `exocomp host onboard/known-hosts`: Onboard fleet nodes and inspect trusted host keys. Both have no remote path yet, so with a remote selected they refuse; run them on the daemon's host with `--local`.
 
 ### Checks & Reactive
 - `exocomp check add/list/enable/disable/rm`: Manage network reachability probe checks.
