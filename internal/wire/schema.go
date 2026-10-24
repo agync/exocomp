@@ -453,12 +453,14 @@ func NewApprovalList(rows []store.Approval) []ApprovalView {
 }
 
 // ScheduleView projects a schedule. Its argv/target live in Args and are
-// omitted to stay identifier-only.
+// omitted to stay identifier-only; the source a play schedule runs from is an
+// identifier and is shown.
 type ScheduleView struct {
 	ID             int64   `json:"id"`
 	Name           string  `json:"name"`
 	Cron           string  `json:"cron"`
 	Kind           string  `json:"kind"`
+	Source         string  `json:"source,omitempty"`
 	ConcurrencyKey string  `json:"concurrency_key,omitempty"`
 	JitterS        int     `json:"jitter_s,omitempty"`
 	Enabled        bool    `json:"enabled"`
@@ -471,7 +473,7 @@ func NewScheduleList(rows []store.Schedule) []ScheduleView {
 	out := make([]ScheduleView, 0, len(rows))
 	for _, s := range rows {
 		out = append(out, ScheduleView{
-			ID: s.ID, Name: s.Name, Cron: s.CronExpr, Kind: s.Kind,
+			ID: s.ID, Name: s.Name, Cron: s.CronExpr, Kind: s.Kind, Source: s.Args.Source,
 			ConcurrencyKey: s.ConcurrencyKey, JitterS: s.JitterS, Enabled: s.Enabled,
 			LastJobID: s.LastJobID, NextAt: rfc3339p(s.NextAt),
 		})
