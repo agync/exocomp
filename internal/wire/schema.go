@@ -325,8 +325,12 @@ type SourceView struct {
 	// 0023). It is additive and omitempty, so a source with no default keeps the
 	// pre-existing bytes and the pinned schema_version does not move — the same
 	// rule the earlier progress, privileged, and expires_at additions followed.
-	ExtraEgressPorts []int  `json:"extra_egress_ports,omitempty"`
-	CreatedAt        string `json:"created_at,omitempty"`
+	ExtraEgressPorts []int `json:"extra_egress_ports,omitempty"`
+	// DefaultRunSecrets names the run-secret binding every ansible run that names
+	// this source inherits when it passes none (Decision 0024). A binding name
+	// only, never a value; omitempty for the same reason as the egress default.
+	DefaultRunSecrets string `json:"default_run_secrets,omitempty"`
+	CreatedAt         string `json:"created_at,omitempty"`
 }
 
 // NewSourceList projects sources in store order.
@@ -336,8 +340,9 @@ func NewSourceList(sources []store.Source) []SourceView {
 		out = append(out, SourceView{
 			ID: s.ID, Name: s.Name, Kind: s.Kind, URI: s.URI, Ref: s.Ref,
 			LastSyncSHA: s.LastSyncSHA, Signed: s.Signed, Writable: s.Writable, Enabled: s.Enabled,
-			ExtraEgressPorts: s.ExtraEgressPorts,
-			CreatedAt:        rfc3339(s.CreatedAt),
+			ExtraEgressPorts:  s.ExtraEgressPorts,
+			DefaultRunSecrets: s.DefaultRunSecrets,
+			CreatedAt:         rfc3339(s.CreatedAt),
 		})
 	}
 	return out
