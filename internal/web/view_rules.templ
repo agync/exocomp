@@ -41,6 +41,9 @@ templ rulesList(vm rulesVM) {
 										if rl.Egress != "" {
 											<span class="guard">{ rl.Egress }</span>
 										}
+										if rl.RunSecrets != "" {
+											<span class="guard">{ rl.RunSecrets }</span>
+										}
 										if rl.Cooldown != "" {
 											<span class="guard">{ rl.Cooldown }</span>
 										}
