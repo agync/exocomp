@@ -89,13 +89,18 @@ for _, sc := range vm.Schedules {
 								<td data-label="Schedule"><button type="button" class="cellact" data-modal-open={ "sched-" + sc.Name }>{ sc.Name }</button></td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
 									<td data-label="Target">
-										if sc.BackupTarget() != "" {
-											<a href={ urlWithBase(vm.Page.Base, "/system/backups") } class="mono">{ sc.BackupTarget() }</a>
-										} else if sc.Kind == "backup" || sc.Kind == "drill" {
-											<span class="meta">every target</span>
-										} else {
-											<span class="mono">{ orDash(sc.Target) }</span>
-										}
+										<div class="sched-target">
+											if sc.BackupTarget() != "" {
+												<a href={ urlWithBase(vm.Page.Base, "/system/backups") } class="mono">{ sc.BackupTarget() }</a>
+											} else if sc.Kind == "backup" || sc.Kind == "drill" {
+												<span class="meta">every target</span>
+											} else {
+												<span class="mono">{ orDash(sc.Target) }</span>
+											}
+											if sc.Source != "" {
+												<div class="meta">from <a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + sc.Source)) } class="mono">{ sc.Source }</a></div>
+											}
+										</div>
 									</td>
 									<td class="mono" data-label="Cron">{ sc.Cron }</td>
 									<td class="mono" data-label="Next fire">
@@ -137,6 +142,15 @@ for _, sc := range vm.Schedules {
 					<div><dt>Cron</dt><dd class="mono">{ sc.Cron }</dd></div>
 					<div><dt>Command</dt><dd class="mono wrap">{ orDash(joinArgv(sc.Argv)) }</dd></div>
 					<div><dt>Target</dt><dd class="mono">{ orDash(sc.Target) }</dd></div>
+					if sc.Kind == "play" {
+						<div><dt>Source</dt><dd class="mono">
+							if sc.Source != "" {
+								<a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + sc.Source)) }>{ sc.Source }</a>
+							} else {
+								-
+							}
+						</dd></div>
+					}
 					<div><dt>Concurrency key</dt><dd class="mono">{ orDash(sc.ConcurrencyKey) }</dd></div>
 					<div><dt>Jitter</dt><dd class="mono">{ itoa(int64(sc.JitterS)) }s</dd></div>
 					if sc.Kind == "play" {

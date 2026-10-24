@@ -2132,6 +2132,9 @@ body { overflow-x: clip; }
    * button is a flex item, so min-width:0 lets it shrink below its content and
    * wrap (never ellipsized). Desktop stays left-aligned (the rule above). */
   .tablewrap.stackable td .sec-name { min-width: 0; text-align: right; }
+  /* A play schedule's target and the source it runs from stack as one right-aligned
+   * value rather than two flex items. */
+  .tablewrap.stackable td .sched-target { min-width: 0; text-align: right; }
 
   /* The 48px touch floor for phone verbs and primary actions (a11y invariant,
    * F3). Compact secondary actions (the Raw log app-bar button) opt out through

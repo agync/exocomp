@@ -522,7 +522,7 @@ func (s *Server) schedules(r *http.Request) ([]scheduleRow, error) {
 		row := scheduleRow{
 			Name: sc.Name, Kind: sc.Kind, Cron: sc.CronExpr,
 			Enabled: sc.Enabled, Next: "-", LastRun: "-",
-			Argv: sc.Args.Argv, Target: sc.Args.Target,
+			Argv: sc.Args.Argv, Target: sc.Args.Target, Source: sc.Args.Source,
 			ConcurrencyKey: sc.ConcurrencyKey, JitterS: sc.JitterS,
 			TolerateUnreachable: sc.Args.TolerateUnreachable,
 		}

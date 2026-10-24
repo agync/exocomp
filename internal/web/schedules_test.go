@@ -194,3 +194,45 @@ func TestScheduleRowDoesNotLinkPlayInventory(t *testing.T) {
 		t.Error("play row rendered a backup back-link for a standing inventory")
 	}
 }
+
+// TestScheduleRowsNameTheirSource: a play schedule that runs from a source names
+// it under the target in the table and in the detail modal, each linking to the
+// source's page; a play schedule without one shows a dash in the modal and no
+// source line in the table, and a non-play schedule shows neither.
+func TestScheduleRowsNameTheirSource(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	for _, sc := range []store.NewSchedule{
+		{Name: "from-source", CronExpr: "@every 6h", Kind: "play",
+			Args: store.ScheduleArgs{Argv: []string{"plays/site.yml"}, Target: "tf:edge", Source: "infra"}},
+		{Name: "from-path", CronExpr: "@every 6h", Kind: "play",
+			Args: store.ScheduleArgs{Argv: []string{"/srv/site.yml"}, Target: "tf:edge"}},
+		{Name: "tick", CronExpr: "@every 6h", Kind: store.ScheduleShell,
+			Args: store.ScheduleArgs{Argv: []string{"echo", "hi"}}},
+	} {
+		if _, err := h.store.CreateSchedule(ctx, sc); err != nil {
+			t.Fatalf("CreateSchedule %s: %v", sc.Name, err)
+		}
+	}
+
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	code, page := getBody(t, client, ts.URL+"/schedules")
+	if code != http.StatusOK {
+		t.Fatalf("GET /schedules = %d, want 200", code)
+	}
+
+	link := `<a href="/sources/infra"`
+	if got := strings.Count(page, link); got != 2 {
+		t.Errorf("source links = %d, want 2 (the table row and the detail modal of the one sourced schedule)", got)
+	}
+	if got := strings.Count(page, "<dt>Source</dt>"); got != 2 {
+		t.Errorf("Source rows in detail modals = %d, want 2 (both play schedules, not the shell one)", got)
+	}
+	if strings.Contains(page, `from <a href="/sources/infra"`) == false {
+		t.Error("table row does not name the source under the target")
+	}
+}
