@@ -77,8 +77,10 @@ exocomp playbook run playbooks/site.yml \
     --kind play \
     --check \
     --target tf:homelab \
+    --source homelab \
     -- playbooks/site.yml
   ```
+  `--source` runs the play from that source's checkout, so the playbook path is relative to it.
 - In the Web UI, schedules can also be triggered on demand using the **Run now** action on `/schedules`.
 
 ## Ad-hoc commands and unreachable hosts

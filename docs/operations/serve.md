@@ -470,6 +470,13 @@ time rather than logged on every boot. `--concurrency-key` is rejected together 
 `--kind backup`: a backup fire keys itself per target (`backup:<target>`), so a key given
 here would never be used.
 
+A `--kind play` schedule can also name a source with `--source <name>`: each fire then runs
+from that source's checkout and inherits its default egress and run-secrets binding, as a
+playbook rule does ([Decision 0025](../decisions/0025-scheduled-play-source.md), and
+[Scheduled plays from a source](sources.md#scheduled-plays-from-a-source)). The daemon resolves
+the source when the schedule fires, so a source removed or hooked since is logged and the
+fire enqueues nothing.
+
 At boot, and on every `SIGHUP` or `--reload-interval` tick, the daemon builds its whole
 set of cron registrations from the `schedule` table before swapping it in. A row the
 parser rejects — a schedule edited or restored into a state that no longer validates —

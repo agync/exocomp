@@ -206,12 +206,20 @@ The reactive engine matches events to rules and gates security-relevant actions 
 - **Unattended runs holding credentials —** a source's default run-secret binding
   ([Decision 0024](../decisions/0024-source-run-secrets-default.md)) is injected into every run
   that names the source, including rule fires driven by webhooks, checks and host-token
-  requests. The binding is operator-set in the store and never chosen by repo content; the
-  injection uses the same allowlisted env, redaction and access-token refusal as an explicit
-  binding; and the rules page names the binding on each playbook rule that inherits it. The
-  residual is that a rule-fired play is trusted with the binding as far as its source's pinned
+  requests, and scheduled plays whose schedule names the source
+  ([Decision 0025](../decisions/0025-scheduled-play-source.md)). The binding is operator-set in
+  the store and never chosen by repo content; the injection uses the same allowlisted env,
+  redaction and access-token refusal as an explicit binding; the rules page names the binding on
+  each playbook rule that inherits it, and a scheduled run's job row records it. The residual is
+  that a rule-fired or scheduled play is trusted with the binding as far as its source's pinned
   checkout is trusted. Accepted: an operator opts a source in, and a source with no default
   behaves as before.
+- **Scheduled play refused at fire time —** a scheduled play whose source can no longer
+  resolve ([Decision 0025](../decisions/0025-scheduled-play-source.md)) enqueues nothing and
+  is reported only in the daemon log. A commit that adds a hooks file to the source's
+  checkout therefore stops its scheduled plays, drift sweeps included, without a job, event
+  or page; a missing inventory already behaves the same way. Accepted for now: the
+  schedule's `next_at` goes stale and the log names the cause.
 - **Cap-page restart behavior —** the once-per-window cap page is process state, so a daemon
   restart re-pages a still-capped rule once — louder than silent, but not a swept ledger.
 - **Sourceless rule matching —** a rule with no `--source` matches events from any hook, a
