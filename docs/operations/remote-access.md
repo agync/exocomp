@@ -119,6 +119,7 @@ Writes enqueue on the remote daemon and return its own envelope.
 | `source add`, `rm`, `sync`, `egress`, `run-secrets` | Changes the source on the daemon. A `--path` names a tree on the daemon's host; `--allowed-signers` is read here and its content sent. A git source prints the deploy key's public half the daemon generated |
 | `secrets add`, `replace`, `rm`, `list` | Seals on the daemon. The value is read from stdin here and sent over the pinned connection; no answer carries it. `rm` of a secret a binding still maps needs `--force` or `--assume-yes`, as locally |
 | `run-secret add`, `rm`, `list` | Changes the bindings on the daemon |
+| `schedule add`, `rm`, `list`, `enable`, `disable`; `rule add`, `rm`, `list`, `enable`, `disable` | Changes the daemon's schedules and rules, checked there as a local add is. A play schedule takes its playbook and `--check`; ansible options after the playbook are set on the daemon's host with `--local`. A rule's `--ssh-identity` names a file on the daemon that its operator allowed. `rule list` shows a shell action's kind, not its argv, which no readonly answer carries. `exocomp reload` applies a schedule change at once |
 
 The source, secret and run-secret verbs take an `operator` token. A deploy key or the fleet key
 that exocomp generated cannot be bound or replaced over the API; do that on the daemon's host

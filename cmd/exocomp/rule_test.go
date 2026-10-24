@@ -197,3 +197,22 @@ func TestRuleAddPlaybookRefusesHookedSource(t *testing.T) {
 		}
 	}
 }
+
+// A schedule or rule added on this machine records the local operator as its
+// creator, in the ledger's words.
+func TestLocalScheduleAndRuleRecordTheLocalOperator(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if out, err := run(t, "--local", "schedule", "add", "tick", "--cron", "@every 1h", "--kind", "shell", "--", "true"); err != nil {
+		t.Fatalf("schedule add: %v\n%s", err, out)
+	}
+	if out, err := run(t, "--local", "rule", "add", "r", "--expr", "true", "--action", "shell", "--", "true"); err != nil {
+		t.Fatalf("rule add: %v\n%s", err, out)
+	}
+	for _, args := range [][]string{{"schedule", "list"}, {"rule", "list"}} {
+		out, err := run(t, append([]string{"--local", "--output", "json"}, args...)...)
+		if err != nil || !strings.Contains(out, `"created_by":"local CLI operator"`) {
+			t.Fatalf("%v = %v %s, want the local operator as creator", args, err, out)
+		}
+	}
+}
