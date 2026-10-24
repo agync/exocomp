@@ -80,8 +80,14 @@ func renderRemotePending(cmd *cobra.Command, mode string, p client.ApprovalPendi
 	if mode == outputJSON {
 		return emitJSON(cmd, client.KindApprovalPending, p)
 	}
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "plan %d requires approval by policy %q\n", p.PlanArtifactID, p.Policy)
+	return printRemoteGated(cmd, p)
+}
+
+// printRemoteGated reports a job waiting in the gate on the daemon and the
+// command that decides it.
+func printRemoteGated(cmd *cobra.Command, p client.ApprovalPending) error {
 	out := cmd.OutOrStdout()
-	_, _ = fmt.Fprintf(out, "plan %d requires approval by policy %q\n", p.PlanArtifactID, p.Policy)
 	_, _ = fmt.Fprintf(out, "job %d gated (%s); approval %d expires %s (in %s)\n",
 		p.JobID, p.State, p.ApprovalID, fmtWireTS(p.ExpiresAt), ttlLabel(p.TTLSeconds))
 	_, err := fmt.Fprintf(out, "decide it with `exocomp %s approval decide %d --approve`\n",
@@ -260,6 +266,102 @@ func runRemotePlaybook(cmd *cobra.Command, rc *client.Client, op remotePlaybookO
 		return 0, remoteFail(cmd, mode, err)
 	}
 	return code, nil
+}
+
+// runRemoteAdhoc enqueues `command` or `ansible` on the remote daemon and
+// follows the job, as a local run waits for it. The daemon resolves --source
+// and --inventory and applies the source's defaults, so the run gets the
+// configuration it would get on that host. It returns the exit code the shell
+// should see.
+func runRemoteAdhoc(cmd *cobra.Command, rc *client.Client, spec adhocSpec) (int, error) {
+	mode := spec.outputMode
+	fail := func(err error) (int, error) { return 0, remoteFail(cmd, mode, err) }
+	if spec.privileged {
+		return fail(fmt.Errorf("%s: --privileged applies to a local run; "+
+			"a --remote run's tier is the daemon's, set on that host", spec.runbook))
+	}
+	if spec.inventory != "" && looksLikePath(spec.inventory) {
+		return fail(fmt.Errorf("%s: --inventory %q is a path on this machine; with --remote name a "+
+			"registered inventory the daemon can resolve", spec.runbook, spec.inventory))
+	}
+	for _, id := range spec.sshIdentity {
+		if !filepath.IsAbs(id) {
+			return fail(fmt.Errorf("%s: --ssh-identity %q is not absolute, "+
+				"and with --remote it names a path on the daemon", spec.runbook, id))
+		}
+	}
+
+	req := client.AdhocRequest{
+		Runbook:             spec.runbook,
+		Host:                spec.pattern,
+		Module:              spec.module,
+		Args:                spec.args,
+		Become:              spec.become,
+		Source:              spec.sourceName,
+		Inventory:           spec.inventory,
+		VaultProject:        spec.vaultProject,
+		RunSecrets:          spec.runSecrets,
+		Runner:              spec.runnerName,
+		RequireApproval:     spec.requireApproval,
+		TolerateUnreachable: spec.tolerateUnreachable,
+		SSHIdentityFiles:    spec.sshIdentity,
+		IdempotencyKey:      spec.idempotencyKey,
+	}
+	if spec.timeout > 0 {
+		req.Timeout = spec.timeout.String()
+	}
+
+	res, err := rc.RunAdhoc(cmd.Context(), req)
+	if err != nil {
+		return fail(err)
+	}
+	if res.Pending != nil {
+		return 0, renderRemoteGatedRun(cmd, rc, mode, *res.Pending)
+	}
+	jobID := res.Enqueued.JobID
+	if mode != outputJSON {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "job %d queued for the remote daemon\n", jobID); err != nil {
+			return 0, err
+		}
+		code, err := followRemoteJob(cmd, rc, mode, jobID)
+		if err != nil {
+			return fail(err)
+		}
+		return code, nil
+	}
+
+	// JSON: the same command.result document a local run prints, built from the
+	// daemon's job and the events the follow saw.
+	var lines []string
+	collect := func(e client.Event) error {
+		lines = appendOutputLine(lines, e.Level, e.Msg)
+		return nil
+	}
+	if err := rc.FollowJob(cmd.Context(), jobID, 0, collect); err != nil {
+		return fail(err)
+	}
+	final, err := rc.GetJob(cmd.Context(), jobID)
+	if err != nil {
+		return fail(err)
+	}
+	if err := emitJSON(cmd, wire.KindCommandResult, commandResultView(final.ID, final.State, final.ExitCode, lines)); err != nil {
+		return 0, err
+	}
+	return remoteJobExit(final), nil
+}
+
+// renderRemoteGatedRun reports an ad-hoc run that --require-approval gated on
+// the daemon. Under --output json it prints the approval as a local gated run
+// does.
+func renderRemoteGatedRun(cmd *cobra.Command, rc *client.Client, mode string, p client.ApprovalPending) error {
+	if mode == outputJSON {
+		a, err := rc.GetApproval(cmd.Context(), p.ApprovalID)
+		if err != nil {
+			return remoteFail(cmd, mode, err)
+		}
+		return emitJSON(cmd, wire.KindApproval, a)
+	}
+	return printRemoteGated(cmd, p)
 }
 
 // runRemoteWorkspace enqueues a plan or an apply on the remote daemon. Neither

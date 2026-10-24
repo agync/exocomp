@@ -56,9 +56,10 @@ type Decision struct {
 	Message    string `json:"message,omitempty"`
 }
 
-// ApplyResult is the two-shaped answer of an apply: exactly one of Enqueued and
-// Pending is set. A gated apply enqueued nothing runnable — the job waits behind
-// Pending — so the caller must not treat it as a started run.
+// ApplyResult is the two-shaped answer of an apply or an ad-hoc run: exactly
+// one of Enqueued and Pending is set. A gated write enqueued nothing runnable —
+// the job waits behind Pending — so the caller must not treat it as a started
+// run.
 type ApplyResult struct {
 	Enqueued *JobEnqueued
 	Pending  *ApprovalPending
@@ -118,6 +119,12 @@ func (c *Client) ApplyWorkspace(ctx context.Context, name string, req WorkspaceR
 	if err != nil {
 		return ApplyResult{}, err
 	}
+	return decodeEnqueuedOrPending(kind, data)
+}
+
+// decodeEnqueuedOrPending decodes a write that either enqueued a job or gated it
+// behind an approval.
+func decodeEnqueuedOrPending(kind string, data json.RawMessage) (ApplyResult, error) {
 	switch kind {
 	case KindApprovalPending:
 		var pending ApprovalPending
@@ -132,7 +139,7 @@ func (c *Client) ApplyWorkspace(ctx context.Context, name string, req WorkspaceR
 		}
 		return ApplyResult{Enqueued: &enq}, nil
 	default:
-		return ApplyResult{}, fmt.Errorf("client: apply answered with unexpected kind %q", kind)
+		return ApplyResult{}, fmt.Errorf("client: write answered with unexpected kind %q", kind)
 	}
 }
 
@@ -188,6 +195,39 @@ func (c *Client) RunPlaybook(ctx context.Context, req PlaybookRequest) (JobEnque
 		return JobEnqueued{}, err
 	}
 	return decodeEnqueued(kind, data)
+}
+
+// AdhocRequest is the body of an ad-hoc module run (`exocomp command` and
+// `exocomp ansible`). Source and Inventory are resolved on the DAEMON, as for a
+// playbook run.
+type AdhocRequest struct {
+	// Runbook is "command" or "ansible", the job list's label for the verb.
+	Runbook             string   `json:"runbook,omitempty"`
+	Host                string   `json:"host"`
+	Module              string   `json:"module,omitempty"`
+	Args                string   `json:"args,omitempty"`
+	Become              bool     `json:"become,omitempty"`
+	Source              string   `json:"source,omitempty"`
+	Inventory           string   `json:"inventory,omitempty"`
+	VaultProject        string   `json:"vault_project,omitempty"`
+	RunSecrets          string   `json:"run_secrets,omitempty"`
+	Runner              string   `json:"runner,omitempty"`
+	RequireApproval     bool     `json:"require_approval,omitempty"`
+	TolerateUnreachable bool     `json:"tolerate_unreachable,omitempty"`
+	Timeout             string   `json:"timeout,omitempty"`
+	SSHIdentityFiles    []string `json:"ssh_identity_files,omitempty"`
+	// IdempotencyKey travels as a header, not a body field.
+	IdempotencyKey string `json:"-"`
+}
+
+// RunAdhoc enqueues one ad-hoc module run. RequireApproval answers with the
+// pending approval instead of a runnable job.
+func (c *Client) RunAdhoc(ctx context.Context, req AdhocRequest) (ApplyResult, error) {
+	kind, data, err := c.do(ctx, http.MethodPost, "/api/v1/adhoc/run", nil, req, req.IdempotencyKey)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	return decodeEnqueuedOrPending(kind, data)
 }
 
 // DecideApproval settles one approval. decision is "approve" or "reject"; the

@@ -10,7 +10,9 @@ Newest first.
 
 - **Remote selection refuses local-only commands.** [Driving a remote
   daemon](operations/remote-access.md#writes) says a command with no remote path now fails under
-  `--remote` or `EXOCOMP_REMOTE` instead of acting on the local data dir.
+  `--remote` or `EXOCOMP_REMOTE` instead of acting on the local data dir, and that `command`
+  and `ansible` enqueue on the daemon through the new `POST /api/v1/adhoc/run`
+  ([API](operations/api.md#write-endpoints-operator)).
 
 ## 2026-10-22
 

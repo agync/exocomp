@@ -107,6 +107,11 @@ Both verbs run through the one queue with the same credential and isolation mode
   `awaiting_approval` where no worker can claim it, an approval is created, and
   `exocomp approval link <id>` prints its decision link. It reuses the same gate a
   policy-gated tofu apply does.
+- **On the daemon when a remote is selected.** With `--remote` or `EXOCOMP_REMOTE`, both
+  verbs enqueue on that daemon (`POST /api/v1/adhoc/run`) and follow the job there:
+  `--source` and `--inventory` resolve on the daemon and the source's default egress
+  applies, as for a run started on that host ([Driving a remote
+  daemon](remote-access.md#writes)).
 
 ### How a run reads in the web jobs list
 

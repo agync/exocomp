@@ -107,6 +107,7 @@ Writes enqueue on the remote daemon and return its own envelope.
 | Command | Over `--remote` |
 |---|---|
 | `playbook run` | Enqueues, then follows the job to its end and exits with the job's code. `--no-follow` prints the id and exits 0 |
+| `command`, `ansible` | Enqueues the ad-hoc module run, then follows it to its end and exits with the job's code. `--source` resolves on the daemon, so the run uses that source's checkout, `ansible.cfg`, inventory and default egress there. A run with no `--source` runs in the daemon's job scratch dir, where a local run uses this machine's home directory. `--require-approval` prints the pending approval and the `approval decide` command instead |
 | `workspace plan` | Enqueues, prints the job id |
 | `workspace destroy` | Enqueues, prints the job id |
 | `workspace apply` | Enqueues, prints the job id — or the pending approval, its policy, deadline and TTL when the plan's verdict gates it |
@@ -121,7 +122,9 @@ another's write (see the [threat model](../security/threat-model.md)).
 
 `--output json` re-emits the daemon's own envelope — `job.enqueued`, `approval.pending`,
 `approval.decision` — byte for byte. A *followed* run emits one document, the settled job,
-rather than a stream of per-event envelopes.
+rather than a stream of per-event envelopes. A followed `command` or `ansible` emits the same
+`command.result` document a local run prints, built from the daemon's job and its events, and
+a gated one emits the approval.
 
 Every command not listed above runs against the local data dir and has no remote path:
 `source add`/`rm`/`sync`/`egress`, `inventory`, `run-secret`, `schedule`, `rule`, `secrets`,
@@ -139,7 +142,10 @@ refused rather than sent:
 
 - a playbook path without `--source` (pass `--source <name>`, or an absolute path that exists
   on the daemon)
-- `--inventory ./hosts.ini` (name a registered inventory instead)
+- `--inventory ./hosts.ini` on `playbook run`, `command` or `ansible` (name a registered
+  inventory instead)
+- `--privileged` on `playbook run`, `command` or `ansible` (a remote run's sandbox tier is
+  the daemon's, set on that host)
 - `--extra-var @file` (pass `key=val`, which travels in the request)
 - a relative `--ssh-identity` (give the absolute path of a key the daemon's operator allowed
   with `serve --allow-ssh-identity`)
