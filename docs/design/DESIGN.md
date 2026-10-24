@@ -392,7 +392,10 @@ restricted to the declared grant. A file is shown as a PATH, never as key
 material. The same effective set is rendered wherever a run's or a rule's reach
 is shown: the approval page carries an `Egress ports` block and the rules row
 carries an `egress {ports}` guard, the rule's declared ports unioned with its
-named source's default.
+named source's default. A run-secret binding inherited from a source's default
+([Decision 0024](../decisions/0024-source-run-secrets-default.md)) is named the
+same way: the approval page carries a `Run-secrets` block and the rules row a
+`secrets {binding}` guard.
 
 **Step rail.** A row of 10px dots rendering a workflow's ledger at a glance, using
 the same five states as the chip.

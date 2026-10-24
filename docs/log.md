@@ -8,6 +8,12 @@ Newest first.
 
 ## 2026-10-24
 
+- **Source run-secrets default.** [Decision 0024](decisions/0024-source-run-secrets-default.md)
+  records an operator-set run-secret binding per source that every ansible run naming it
+  inherits, so a rule-fired play can decrypt an env-var-keyed vault tree. [Sources](operations/sources.md#source-scoped-run-secrets-default),
+  [serve](operations/serve.md), the [sources guide](guide/sources.md), the [secrets guide](guide/secrets.md),
+  the [reactive guide](guide/reactive.md), the [CLI reference](reference/cli.md), [the threat
+  model](security/threat-model.md) and [the decision index](decisions/index.md) follow.
 - **Remote selection refuses local-only commands.** [Driving a remote
   daemon](operations/remote-access.md#writes) says a command with no remote path now fails under
   `--remote` or `EXOCOMP_REMOTE` instead of acting on the local data dir, and that `command`
