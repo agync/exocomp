@@ -17,7 +17,7 @@ These flags apply across all CLI commands:
 | Flag | Env Variable | Description |
 |---|---|---|
 | `--output <format>` | `EXOCOMP_OUTPUT` | Output formatting: `text` (default) or `json` (also `yaml` for export) |
-| `--remote <target>` | `EXOCOMP_REMOTE` | Drive a remote daemon over HTTPS / LAN (pinned name or URL) |
+| `--remote <target>` | `EXOCOMP_REMOTE` | Drive a remote daemon over HTTPS / LAN (pinned name or URL); commands without a remote path refuse it |
 | `--token <token>` | `EXOCOMP_TOKEN` | Bearer token for remote daemon authentication |
 | `--idempotency-key <key>` | `EXOCOMP_IDEMPOTENCY_KEY` | Deduplicate mutating commands to one job |
 | `-y, --assume-yes` | — | Answer yes to destructive confirmations (scripts, CI) |
