@@ -6,6 +6,12 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-24
+
+- **Remote selection refuses local-only commands.** [Driving a remote
+  daemon](operations/remote-access.md#writes) says a command with no remote path now fails under
+  `--remote` or `EXOCOMP_REMOTE` instead of acting on the local data dir.
+
 ## 2026-10-22
 
 - **Toolchain pin bumps.** [Toolchain pin bumps](contribution/pin-bumps.md) describes the
