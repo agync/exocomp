@@ -30,7 +30,7 @@ Tokens carry one of three scopes, checked **before any store read**:
 | Scope | May |
 |---|---|
 | `readonly` | every `GET` route |
-| `operator` | every `GET` route, plus every enqueuing `POST` (plan/apply/playbook run/ad-hoc run), the maintenance cordon/uncordon, and the source, secret and run-secret writes |
+| `operator` | every `GET` route, plus every enqueuing `POST` (plan/apply/playbook run/ad-hoc run), the maintenance cordon/uncordon, the source, secret and run-secret writes, and the schedule and rule writes |
 | `approve` | every `GET` route, plus `POST /approvals/{id}/decision` |
 
 `operator` does **not** cover decisions on this face: a token that can enqueue a gated apply
@@ -78,10 +78,10 @@ GET /api/v1/approvals?all=                      # pending-only unless all=true
 GET /api/v1/approvals/{id}                       # + structured stale + provenance (see below)
 GET /api/v1/approvals/{id}/plan                 # structured redacted diff (operator/approve, not readonly)
 GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-change
-GET /api/v1/schedules
+GET /api/v1/schedules                         # + created_by: who added it, in the job ledger's words
 GET /api/v1/netgroups                         # [{id, name, prefixes, excludes}]
 GET /api/v1/checks                            # per target: status + netgroup + duration + last_change
-GET /api/v1/rules                             # playbook action carries source/playbook/limit/tags/check/diff/timeout
+GET /api/v1/rules                             # action fields: workspace, source/playbook/limit/tags/check/diff/timeout; no shell argv; + created_by
 GET /api/v1/silences?all=                       # active-only unless all=true
 GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true
 GET /api/v1/notify/endpoints                     # this token's own registered push endpoints
@@ -366,6 +366,35 @@ volume, is a `400`: the sandbox would refuse every run from it.
   break or take over what exocomp fills there.
 - `POST /sources/{name}/sync` runs the git fetch inside the request, as the browser's Sync does.
   A sync git fails is a `502` with a fixed message, and git's output goes to the daemon log.
+
+## Schedules and rules (`operator`)
+
+```
+POST   /api/v1/schedules                        # {name, cron, kind, argv, target, source, tolerate_unreachable, concurrency_key, jitter_s} -> schedule.get
+DELETE /api/v1/schedules/{name}                 # -> schedule.removed
+POST   /api/v1/schedules/{name}/enable          # -> schedule.get
+POST   /api/v1/schedules/{name}/disable         # -> schedule.get
+POST   /api/v1/rules                            # {name, source_filter, expr, action, argv, workspace, source, playbook,
+                                                #  limit, tags, check, diff, timeout, egress, ssh_identity_files,
+                                                #  cooldown_s, daily_cap, require_approval} -> rule.get
+DELETE /api/v1/rules/{name}                     # with its fire ledger -> rule.removed
+POST   /api/v1/rules/{name}/enable              # -> rule.get
+POST   /api/v1/rules/{name}/disable             # -> rule.get
+```
+
+These are `exocomp schedule` and `exocomp rule` on the daemon's own host, checked the way the
+scheduler and the engine will read them: the cron parses, the kind's or action's fields fit
+it, the rule's expression compiles, and a play schedule or playbook rule naming a `source`
+resolves to a plain playbook in that checkout. Anything else is a `400` and nothing is
+stored. A rule's `ssh_identity_files` must each be a file the daemon's operator allowed with
+`serve --allow-ssh-identity`. A rule gets no `allow_cross_host` here, as the CLI offers none.
+A running daemon picks up a schedule change on its next reload (`POST
+/api/v1/maintenance/reload`), as it does for one the CLI writes.
+
+The row records the token that added it as `created_by` (`token ci via api`). A `shell`
+schedule or rule runs its argv as the daemon's user with no kernel sandbox, and each job it
+fires logs `running UNSANDBOXED (shell)`. That reach is an operator token's by design ([Decision
+0027](../decisions/0027-credential-plane-over-the-api.md)).
 
 ## Deciding an approval
 

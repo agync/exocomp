@@ -9,6 +9,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/sched"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -184,7 +185,8 @@ func (s *Server) handleBackupAdd(w http.ResponseWriter, r *http.Request) {
 	if form.ScheduleCron != "" {
 		if _, err := s.store.CreateSchedule(r.Context(), store.NewSchedule{
 			Name: form.Name, CronExpr: form.ScheduleCron, Kind: store.ScheduleBackup,
-			Args: store.ScheduleArgs{Target: form.Name},
+			Args:      store.ScheduleArgs{Target: form.Name},
+			CreatedBy: service.ActorLabel(service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name, Face: "web"}),
 		}); err != nil {
 			rollback()
 			if errors.Is(err, store.ErrDuplicate) {

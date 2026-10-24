@@ -417,9 +417,20 @@ the gate.
   (`internal/mcp/writes.go`, `internal/web/api_write.go`, `internal/store/check.go`), exactly
   as the existing silences and mutes already write. The source, secret and run-secret writes
   on `/api/v1` (`internal/web/api_admin.go`) name the token in the daemon log and record no
-  ledger row either. An agent's config change is therefore not
-  attributable after the fact. Closing it needs a store-level writer/ledger seam; it is not
-  attempted here.
+  ledger row either. An agent's change to those is therefore not attributable after the fact.
+  Closing it needs a store-level writer/ledger seam; it is not attempted here. A schedule or
+  rule is the exception: its row records its creator (`created_by`) from every face that adds
+  one, though a
+  later change to it (enable, disable) names the token only in the daemon log, and a job it
+  fires carries the schedule or rule name, not the token.
+- **Shell schedules and rules run unsandboxed —** a `shell` schedule or rule runs its argv as
+  the daemon's user with no kernel sandbox at any tier (`internal/sched/driver.go`,
+  `executor.NewScopedShell`), so it can read the data dir, the keyring and the host key. Adding
+  one takes the `operator` scope, over `/api/v1`, the browser (schedules) or the CLI on the
+  daemon's host.
+  That is the reach the trust boundary above already grants an operator, so it is accepted
+  rather than narrowed: the row records who created it, and every shell job's log carries
+  `running UNSANDBOXED (shell)` at execution on every path (daemon or inline drain).
 
 ## Optional OpenBao Transit seal (Decision 0013)
 

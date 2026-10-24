@@ -36,14 +36,17 @@ WARNING: workspace prod holds a stale state lock (apply by ci@lima since 2026-08
 | `--reload-interval` | `1m` | How often schedules are rebuilt from the database, so `schedule add/enable/disable` reaches a running daemon without a signal. `0` means only `SIGHUP` reloads. |
 | `--sandbox` | `$EXOCOMP_SANDBOX`, else `enforcing` | Job isolation tier: `opportunistic`, `enforcing`, or `disabled`. See below. |
 | `--resolver-allow-domain` | none | An extra package index host the dependency resolvers may reach through the sandbox proxy, repeatable, on top of `pypi.org`, `files.pythonhosted.org` and the Ansible Galaxy hosts. Plain lowercase host names only, no wildcard, no address and no `localhost`. A private or alternate index, or a host named in a collections requirements file, needs it. It applies to the daemon only, and the Galaxy defaults are the API host and the bucket its downloads redirect to. See [job sandboxing](../guide/sandbox.md#egress). |
-| `--allow-ssh-identity` | none | An ssh identity key file a run enqueued with `POST /api/v1/playbooks/run` or `POST /api/v1/adhoc/run` may ask to read, repeatable. Each names one absolute path to a regular file outside the data dir and outside the paths that unwrap the DEK (the systemd credentials directory, the host-key passphrase file and the transit seal token file), never a directory, and `serve` refuses to start when one does not. A remote run that names any other file is refused. See [read grants for ssh identity files](#read-grants-for-ssh-identity-files). |
+| `--allow-ssh-identity` | none | An ssh identity key file a run enqueued with `POST /api/v1/playbooks/run` or `POST /api/v1/adhoc/run`, or a rule added with `POST /api/v1/rules`, may ask to read, repeatable. Each names one absolute path to a regular file outside the data dir and outside the paths that unwrap the DEK (the systemd credentials directory, the host-key passphrase file and the transit seal token file), never a directory, and `serve` refuses to start when one does not. A remote run that names any other file is refused. See [read grants for ssh identity files](#read-grants-for-ssh-identity-files). |
 | `--secret-staging` | `auto` | Where a run-secret staged as a file (`bootstrap run --capture-file`) lands: `auto`, `tmpfs`, or `disk`. See below. |
 
 ## Job isolation
 
-Every job subprocess runs under a kernel sandbox where the host supports one
-([Decision 0005](../decisions/0005-job-sandboxing-nono.md)). The tier is decided once at startup and
-printed:
+Ansible, tofu, governed-CLI and hook jobs, and the dependency resolvers, run under a kernel
+sandbox where the host supports one ([Decision 0005](../decisions/0005-job-sandboxing-nono.md)).
+A shell job, the command of a `shell` schedule or rule, runs as the daemon's user with no
+kernel sandbox at any tier, and its log says `running UNSANDBOXED (shell)`. Backup jobs run
+exocomp's own restic and git commands outside the sandbox too. The tier is decided once at
+startup and printed:
 
 ```
 job isolation tier: enforcing

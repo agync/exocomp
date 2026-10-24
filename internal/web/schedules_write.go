@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"exocomp.dev/exocomp/internal/sched"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -172,6 +173,7 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 	created, err := s.store.CreateSchedule(r.Context(), store.NewSchedule{
 		Name: form.Name, CronExpr: form.Cron, Kind: form.Kind, Args: args,
 		ConcurrencyKey: form.ConcurrencyKey, JitterS: jitter,
+		CreatedBy: service.ActorLabel(service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name, Face: "web"}),
 	})
 	if errors.Is(err, store.ErrDuplicate) {
 		s.log.Info("web: schedule add refused", "err", err.Error(), "by", ident.token.Name)

@@ -1399,3 +1399,54 @@ func TestMigration0044UpgradesFrom043(t *testing.T) {
 		t.Fatalf("default run-secrets = %q, want vault", updated.DefaultRunSecrets)
 	}
 }
+
+// TestMigration0045UpgradesFrom044 pins a database at user_version 44 (no
+// created_by on schedule or rule), seeds one of each, then opens it with the
+// current binary: both rows survive with an empty creator, and a new row
+// keeps the one it is given. 0045 records who created a schedule or rule
+// (Decision 0027).
+func TestMigration0045UpgradesFrom044(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 44)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := raw.ExecContext(ctx, `
+		INSERT INTO schedule (name, cron_expr, kind, args_json) VALUES ('tick', '@every 1h', 'shell', '{"argv":["true"]}');
+		INSERT INTO rule (name, cel_expr, action_kind) VALUES ('r', 'true', 'notify');`); err != nil {
+		t.Fatalf("seed rows: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0044 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	sc, err := s.GetSchedule(ctx, "tick")
+	if err != nil || sc.CreatedBy != "" {
+		t.Fatalf("seeded schedule = %+v (%v), want it with no creator", sc, err)
+	}
+	r, err := s.GetRule(ctx, "r")
+	if err != nil || r.CreatedBy != "" {
+		t.Fatalf("seeded rule = %+v (%v), want it with no creator", r, err)
+	}
+	created, err := s.CreateSchedule(ctx, NewSchedule{
+		Name: "tock", CronExpr: "@every 1h", Kind: ScheduleShell,
+		Args: ScheduleArgs{Argv: []string{"true"}}, CreatedBy: "token ci via api",
+	})
+	if err != nil || created.CreatedBy != "token ci via api" {
+		t.Fatalf("new schedule = %+v (%v), want its creator kept", created, err)
+	}
+	rule, err := s.CreateRule(ctx, NewRule{Name: "r2", CELExpr: "true", ActionKind: ActionNotify, CreatedBy: "local CLI operator"})
+	if err != nil || rule.CreatedBy != "local CLI operator" {
+		t.Fatalf("new rule = %+v (%v), want its creator kept", rule, err)
+	}
+}

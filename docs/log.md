@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-10-24
 
+- **Schedules and rules over the API.** [The API](operations/api.md#schedules-and-rules-operator)
+  and [Driving a remote daemon](operations/remote-access.md#writes) gain the schedule and rule
+  writes. [Decision 0027](decisions/0027-credential-plane-over-the-api.md) and [the threat
+  model](security/threat-model.md) record that a shell schedule or rule runs unsandboxed, and
+  each row records who created it.
 - **Sources, secrets and run-secrets over the API.** [Decision
   0027](decisions/0027-credential-plane-over-the-api.md) records the operator-scope routes and
   the keys that stay on the host; [the API](operations/api.md#sources-secrets-and-run-secrets-operator),

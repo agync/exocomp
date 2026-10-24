@@ -562,3 +562,50 @@ func backupTargetNames(ctx context.Context, st *store.Store, target string) ([]s
 	}
 	return names, nil
 }
+
+// CheckNewSchedule checks a new schedule the way the scheduler will read it:
+// the cron parses and the kind's fields fit it. A refusal wraps
+// store.ErrValidation, so every face reports it as the caller's bad input.
+func CheckNewSchedule(n store.NewSchedule) error {
+	invalid := func(format string, a ...any) error {
+		return fmt.Errorf("%w: %s", store.ErrValidation, fmt.Sprintf(format, a...))
+	}
+	if err := ValidateCron(n.CronExpr); err != nil {
+		return invalid("%v", err)
+	}
+	if n.JitterS < 0 {
+		return invalid("jitter cannot be negative")
+	}
+	a := n.Args
+	switch n.Kind {
+	case store.ScheduleShell:
+		if len(a.Argv) == 0 {
+			return invalid("kind shell needs argv")
+		}
+		if a.Target != "" {
+			return invalid("kind shell takes no target")
+		}
+	case store.ScheduleBackup, store.ScheduleDrill:
+		if len(a.Argv) != 0 {
+			return invalid("kind %s takes no argv", n.Kind)
+		}
+		// Each fire builds its own key per target, so one given here would be
+		// dropped on the floor.
+		if n.ConcurrencyKey != "" {
+			return invalid("kind %s keys each fire by target; a concurrency key applies to kinds shell and play", n.Kind)
+		}
+	case KindPlay:
+		if len(a.Argv) == 0 {
+			return invalid("kind play needs a playbook")
+		}
+		if a.Target == "" {
+			return invalid("kind play needs a target inventory")
+		}
+	default:
+		return invalid("kind must be %s, %s, %s or %s", store.ScheduleShell, store.ScheduleBackup, KindPlay, store.ScheduleDrill)
+	}
+	if n.Kind != KindPlay && (a.Source != "" || a.TolerateUnreachable) {
+		return invalid("source and tolerate-unreachable apply to kind play")
+	}
+	return nil
+}
