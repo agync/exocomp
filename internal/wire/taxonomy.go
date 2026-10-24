@@ -23,9 +23,17 @@ const (
 	CodeStreamsOverCap  = "streams_over_cap"
 	CodeUnauthenticated = "unauthenticated" // web.ErrUnauthenticated (auth boundary)
 	CodeForbidden       = "forbidden"       // scope check (auth boundary)
+	// CodeRemoteUnsupported is the CLI's refusal of a command that has no
+	// remote path while a remote daemon is selected (ErrRemoteUnsupported).
+	CodeRemoteUnsupported = "remote_unsupported"
 	// CodeInternal is the fallback for an error that matched no sentinel.
 	CodeInternal = "internal"
 )
+
+// ErrRemoteUnsupported marks the CLI's refusal of a command that has no remote
+// path while a remote daemon is selected. It lives here, beside its code,
+// because the refusal is raised in cmd/exocomp, which no sentinel package sees.
+var ErrRemoteUnsupported = errors.New("no remote path for this command")
 
 // Exit codes are the primary agent signal (invariant 3): a weak model can branch
 // on the process code alone. The table is the shipped exit-code→state mapping
@@ -54,6 +62,8 @@ var hints = map[string]string{
 	CodeStreamsOverCap:  "too many live streams; close a tab or retry shortly",
 	CodeUnauthenticated: "supply a valid token or session",
 	CodeForbidden:       "this token's scope is too low for the verb; mint one with a higher scope",
+	CodeRemoteUnsupported: "pass --local to run the command against this machine's data dir, " +
+		"or run it on the daemon's host",
 }
 
 // ErrorFor maps a Go error onto the taxonomy. It matches the store and reactive
@@ -76,6 +86,8 @@ func ErrorFor(err error) Error {
 		code = CodeConcurrencyHeld
 	case errors.Is(err, reactive.ErrStalePlan):
 		code = CodeStalePlan
+	case errors.Is(err, ErrRemoteUnsupported):
+		code = CodeRemoteUnsupported
 	}
 	return Error{Code: code, Message: err.Error(), Hint: hints[code]}
 }
