@@ -108,9 +108,39 @@ a `secrets <binding>` guard on each playbook rule whose source has one.
 
 `--vault-project` is not defaulted. It derives a password from the envelope for a named
 project and stays a per-run argument; it composes with an inherited binding when both are
-set. A scheduled play, a handoff play and a bootstrap play name no source and do not inherit
-the default; run a play against a source tree with encrypted vars from a playbook rule.
-`run-secret rm` refuses a binding a source names as its default.
+set. A scheduled play inherits the default when its schedule names the source (see
+[Scheduled plays from a source](#scheduled-plays-from-a-source)); a handoff play and a
+bootstrap play name no source on their play step and do not, whatever `--source` they were
+given for lifecycle hooks. `run-secret rm` refuses a binding a source names as its default.
+
+## Scheduled plays from a source
+
+A `--kind play` schedule can name a registered source
+([Decision 0025](../decisions/0025-scheduled-play-source.md)):
+
+```
+exocomp schedule add nightly-converge --kind play --cron "0 0 3 * * *" \
+  --target tf:edge --source homelab -- plays/site.yml
+```
+
+The source must resolve when the schedule is added: it must exist and carry no hooks, and
+the playbook is relative to its checkout and may not leave it, so an absolute path is refused. Each fire runs the play from that checkout, with
+its `ansible.cfg` loaded and its read-only posture, and the job names the source, so queue
+admission unions the source's default egress and fills its default run-secrets binding like
+any run that names it. The standing inventory `--target` names is unchanged and keeps its
+fail-closed rules. `--source` is refused on any other kind.
+
+Because that inventory is passed as `--inventory`, it overrides the checkout's `ansible.cfg`
+inventory: vars beside the playbook and in its roles load, but `group_vars` and `host_vars`
+beside the checkout's own inventory do not, so a tree that keeps its encrypted vars there still
+belongs in a playbook rule. A schedule has no `--vault-project`; the credential is the source's
+default binding.
+
+A source that gains lifecycle hooks or a gate after the schedule was added is refused at fire
+time, as for a playbook rule. A source that cannot be resolved then, including one removed
+since, enqueues nothing and only the daemon log says why. A schedule with no `--source` is unchanged: the playbook path as given, no
+working directory, no source, and none of the defaults. The schedules page and the schedule
+detail show the source, and `schedule list --output json` carries it as `source`.
 
 ## The credential plane — sealed secrets as run env
 

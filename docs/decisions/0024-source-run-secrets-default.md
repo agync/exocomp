@@ -83,11 +83,9 @@ resolver still refuses a value shaped like an access token.
   replace the default with its own `--run-secrets` but cannot skip it. A binding
   whose secrets are later deleted still fails the run with the "not found" error
   an explicit `--run-secrets` gives, rather than running without credentials.
-- A scheduled play carries no source (`ScheduleArgs` has no `Source`), so it does
-  not inherit the default, the same limit Decision 0023 records for egress. Giving
-  a schedule a source, with the checkout, `ansible.cfg` and hook handling a
-  source-resolved run needs, is a separate change. Until then a play against a
-  source tree with encrypted vars belongs in a playbook rule.
+- A scheduled play inherits the default only when its schedule names a source
+  ([Decision 0025](0025-scheduled-play-source.md)); a schedule without one carries
+  no source and does not.
 - A rerun, redrive or workflow re-arm clones the job's stamped binding and then
   passes admission again. Clearing the default does not strip a binding already
   stamped on an older job, and a job stamped with none picks up the source's

@@ -123,7 +123,7 @@ To detect config drift regularly, register a **check-mode play schedule** — th
 config twin of a tofu-plan drift schedule:
 
 ```
-exocomp schedule add nightly-drift --kind play --check \
+exocomp schedule add nightly-drift --kind play --check --source homelab \
   --target tf:edge --cron "0 0 3 * * *" -- site.yml
 ```
 
@@ -135,6 +135,11 @@ a newly provisioned host joins the next drift sweep) and emits the same
 drifted. The fail-closed rule for play schedules still holds: a missing, stale,
 or hostless inventory fires nothing rather than reporting a clean sweep against
 nobody. `--check` is rejected on any other kind.
+
+`--source homelab` runs each fire from that registered source's checkout, with the playbook
+relative to it, and the fires inherit the source's default egress and run-secrets binding
+([Scheduled plays from a source](sources.md#scheduled-plays-from-a-source)). Without it the
+playbook path is used as given.
 
 ## The reactive seam
 

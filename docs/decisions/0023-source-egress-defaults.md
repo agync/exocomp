@@ -68,9 +68,9 @@ egress would lie, because only the row is durably re-derivable).
   rule's or a run's reach — the rules page and the approval page — must therefore
   render the effective set, or a published bound (a rule's declared ports) stops
   describing what an unattended run may open.
-- A scheduled play carries no source (`ScheduleArgs` has no `Source`), so a
-  source-keyed default does not reach it. Giving a schedule a source is a separate
-  change, and this record does not claim the default covers scheduled plays.
+- A scheduled play reaches the default only when its schedule names a source
+  ([Decision 0025](0025-scheduled-play-source.md)); a schedule without one carries
+  no source and is not widened.
 - The OpenTofu precedent is deliberately **not** followed at the application
   point. Tofu reads `workspace.extra_egress_ports` in the driver at run time and
   never writes it to the row; ansible records the merged grant instead. The shared

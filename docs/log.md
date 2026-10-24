@@ -8,6 +8,12 @@ Newest first.
 
 ## 2026-10-24
 
+- **Scheduled play from a source.** [Decision 0025](decisions/0025-scheduled-play-source.md)
+  lets a play schedule name a registered source, so a fire runs from its checkout and inherits
+  its default egress and run-secret binding. [Sources](operations/sources.md#scheduled-plays-from-a-source),
+  [serve](operations/serve.md), [playbook run](operations/playbook-run.md), the
+  [sources guide](guide/sources.md), [the threat model](security/threat-model.md) and
+  [the decision index](decisions/index.md) follow. Handoff and bootstrap plays stay sourceless.
 - **Source run-secrets default.** [Decision 0024](decisions/0024-source-run-secrets-default.md)
   records an operator-set run-secret binding per source that every ansible run naming it
   inherits, so a rule-fired play can decrypt an env-var-keyed vault tree. [Sources](operations/sources.md#source-scoped-run-secrets-default),

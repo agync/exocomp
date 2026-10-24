@@ -79,6 +79,20 @@ The source's detail page shows the default (a **Run-secrets** line and card), an
 page shows a `secrets <binding>` guard on each playbook rule that inherits one. See
 [Source-scoped run-secrets default](../operations/sources.md#source-scoped-run-secrets-default).
 
+## Scheduling a play from a source
+
+A recurring play can run from a source too, so it inherits the source's egress and
+run-secrets defaults:
+
+```bash
+exocomp schedule add nightly-converge --kind play --cron "0 0 3 * * *" \
+  --target tf:homelab --source homelab -- playbooks/site.yml
+```
+
+The playbook is relative to the source's checkout, and the source must already exist. The
+schedules page shows the source beside each play's target. See
+[Scheduled plays from a source](../operations/sources.md#scheduled-plays-from-a-source).
+
 ## Dependency management in sources
 
 exocomp enforces strict per-source isolation:

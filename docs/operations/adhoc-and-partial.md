@@ -200,7 +200,7 @@ fire into the list of offline hosts.
 Register the recurring converge over a standing inventory with the tolerance on:
 
 ```
-exocomp schedule add nightly-converge --kind play --tolerate-unreachable \
+exocomp schedule add nightly-converge --kind play --tolerate-unreachable --source homelab \
   --target tf:homelab --cron "0 0 3 * * *" -- site.yml
 ```
 
