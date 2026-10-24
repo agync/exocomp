@@ -1335,3 +1335,67 @@ func TestMigration0039UpgradesFrom038(t *testing.T) {
 		t.Fatalf("snoozed_until = %v, want %v", got.SnoozedUntil, until)
 	}
 }
+
+// TestMigration0044UpgradesFrom043 pins a database at user_version 43 (no
+// source.default_run_secrets), seeds a source row, then opens it with the
+// current binary: the column arrives in place empty with the row surviving and a
+// binding name round-tripping. 0044 is the per-source default run-secret binding
+// (Decision 0024).
+func TestMigration0044UpgradesFrom043(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 43)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var colCount int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('source') WHERE name = 'default_run_secrets'`).
+		Scan(&colCount); err != nil {
+		t.Fatalf("probe pre-migration schema: %v", err)
+	}
+	if colCount != 0 {
+		t.Fatal("source.default_run_secrets exists at user_version 43; the pin is not honest")
+	}
+	if _, err := raw.ExecContext(ctx, `
+		INSERT INTO source (name, kind, created_at) VALUES ('infra', 'git', 1)`); err != nil {
+		t.Fatalf("seed source row: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0043 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 44 {
+		t.Fatalf("schema version = %d after open, want >= 44 (0044 applied)", version)
+	}
+	src, err := s.SourceByName(ctx, "infra")
+	if err != nil {
+		t.Fatalf("read seeded source: %v", err)
+	}
+	if src.DefaultRunSecrets != "" {
+		t.Fatalf("seeded source default run-secrets = %q, want empty", src.DefaultRunSecrets)
+	}
+	if _, err := s.AddRunSecret(ctx, RunSecret{Binding: "vault", EnvName: "X", SecretName: "x"}); err != nil {
+		t.Fatalf("add run secret on upgraded db: %v", err)
+	}
+	updated, err := s.SetSourceRunSecrets(ctx, src.ID, "vault")
+	if err != nil {
+		t.Fatalf("set default on upgraded db: %v", err)
+	}
+	if updated.DefaultRunSecrets != "vault" {
+		t.Fatalf("default run-secrets = %q, want vault", updated.DefaultRunSecrets)
+	}
+}

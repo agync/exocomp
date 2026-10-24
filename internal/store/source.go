@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -49,7 +50,12 @@ type Source struct {
 	// 0023). Empty is the default posture: the ansible kind's built-in grant
 	// only. Validated (1..65535), de-duplicated, and sorted at write time.
 	ExtraEgressPorts []int
-	CreatedAt        time.Time
+	// DefaultRunSecrets names the run_secret binding every ansible run that
+	// names this source inherits when the run passes none of its own (Decision
+	// 0024). It is a name only: the sealed values it maps are resolved from the
+	// envelope at execution time. Empty is the default posture: no injection.
+	DefaultRunSecrets string
+	CreatedAt         time.Time
 }
 
 // Inventory is what an ansible run targets. For a dynamic inventory EnvBinding
@@ -76,7 +82,7 @@ type RunSecret struct {
 }
 
 const sourceColumns = `id, name, kind, uri, ref, deploy_key_secret,
-	last_sync_sha, signed, allowed_signers, writable, enabled, extra_egress_ports, created_at`
+	last_sync_sha, signed, allowed_signers, writable, enabled, extra_egress_ports, default_run_secrets, created_at`
 
 // CreateSource inserts a source. A repeated name returns ErrDuplicate.
 func (s *Store) CreateSource(ctx context.Context, src Source) (Source, error) {
@@ -186,6 +192,33 @@ func (s *Store) SetSourceEgressPorts(ctx context.Context, id int64, ports []int)
 		`UPDATE source SET extra_egress_ports = ? WHERE id = ?`, string(encoded), id)
 	if err != nil {
 		return Source{}, wrap("set source egress ports", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Source{}, ErrNotFound
+	}
+	return s.GetSource(ctx, id)
+}
+
+// SetSourceRunSecrets replaces a source's default run-secret binding (Decision
+// 0024). A non-empty binding must name a registered run_secret set, so a typo is
+// refused here rather than failing every run of the source when it fires; an
+// empty binding clears the default. Only the name is stored. The binding's pairs
+// are re-read at run time, so rebinding or deleting it later takes effect on the
+// next run (a deleted binding fails that run loudly, as an explicit one does).
+func (s *Store) SetSourceRunSecrets(ctx context.Context, id int64, binding string) (Source, error) {
+	if binding != "" {
+		pairs, err := s.RunSecretsByBinding(ctx, binding)
+		if err != nil {
+			return Source{}, err
+		}
+		if len(pairs) == 0 {
+			return Source{}, fmt.Errorf("store: run-secret binding %q: %w", binding, ErrNotFound)
+		}
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE source SET default_run_secrets = ? WHERE id = ?`, binding, id)
+	if err != nil {
+		return Source{}, wrap("set source run secrets", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return Source{}, ErrNotFound
@@ -356,8 +389,20 @@ func (s *Store) ListRunSecretBindings(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-// DeleteRunSecretBinding removes every pair under a binding name.
+// DeleteRunSecretBinding removes every pair under a binding name. A binding that
+// a source names as its default is refused with ErrValidation: removing it would
+// fail every later run of that source, with no per-run way to skip the default.
 func (s *Store) DeleteRunSecretBinding(ctx context.Context, binding string) error {
+	var holder string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT name FROM source WHERE default_run_secrets = ? ORDER BY name LIMIT 1`, binding).Scan(&holder)
+	switch {
+	case err == nil:
+		return fmt.Errorf("%w: store: binding %q is the default run-secrets of source %q; clear it first",
+			ErrValidation, binding, holder)
+	case !errors.Is(err, sql.ErrNoRows):
+		return wrap("delete run secret binding", err)
+	}
 	res, err := s.db.ExecContext(ctx, `DELETE FROM run_secret WHERE binding = ?`, binding)
 	if err != nil {
 		return wrap("delete run secret binding", err)
@@ -381,7 +426,7 @@ func scanSource(row rowScanner) (Source, error) {
 	)
 	if err := row.Scan(&src.ID, &src.Name, &src.Kind, &src.URI, &src.Ref,
 		&src.DeployKeySecret, &src.LastSyncSHA, &signed, &src.AllowedSigners,
-		&writable, &enabled, &egress, &createdAt); err != nil {
+		&writable, &enabled, &egress, &src.DefaultRunSecrets, &createdAt); err != nil {
 		return Source{}, err
 	}
 	src.Signed = signed != 0
