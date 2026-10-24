@@ -53,7 +53,11 @@ func newScheduleAddCmd() *cobra.Command {
 			"(everything after --, the playbook first) against the standing inventory " +
 			"--target names — `tf:<workspace>` for the inventory a workspace's apply " +
 			"refreshes, so a newly provisioned host joins the next fire. A play whose " +
-			"inventory is missing, stale, or hostless enqueues nothing.\n\n" +
+			"inventory is missing, stale, or hostless enqueues nothing. A play fire names no " +
+			"source, so it does not inherit a source's default run-secrets binding " +
+			"(`exocomp source run-secrets`) and derives no vault password; a play against " +
+			"a source tree with encrypted vars belongs in a playbook rule, which inherits the " +
+			"source default.\n\n" +
 			"Kind play with --check is the config-drift schedule: it fires the play in " +
 			"ansible check mode (--check --diff) on the cron, so every fire emits the " +
 			"structured 'would change' outcome as a job event without touching a host " +

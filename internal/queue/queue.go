@@ -172,23 +172,29 @@ func WithoutDrainSet() Option {
 	return func(q *Queue) { q.enqueued = nil }
 }
 
-// withSourceEgress unions a named source's persisted default egress set into an
-// ansible spec's declared ports: effective egress is what the run declares plus
-// whatever the operator recorded on the source (Decision 0023). It is applied
-// only at admission because that is the one place a job row is created, so the
-// recorded row is the grant the run actually receives.
+// ApplySourceDefaults folds a named source's operator-set defaults into an
+// ansible spec: the source's default egress set is unioned into the declared
+// ports (Decision 0023), and its default run-secret binding fills a spec that
+// names none (Decision 0024). An explicit binding on the spec always wins, and
+// neither default is ever read from the source's content.
 //
-// Only an ansible job that names a source is widened. Shell, tofu, hook, backup,
-// and vendor jobs never are, and a job naming no source keeps exactly its
-// declared set. A named source that no longer exists is not an error and is
-// never substituted for another: a redrive or replay of an old job whose source
-// was deleted must keep working, and that job's row already carries the set
-// merged when it was first admitted.
-func (q *Queue) withSourceEgress(ctx context.Context, spec Spec) (Spec, error) {
+// The queue applies it at admission because that is the one place a job row is
+// created, so the recorded row is the grant and the credential binding the run
+// actually receives. A caller that resolves run-secrets from the spec before it
+// enqueues (the daemonless inline drain) calls it first so both read the same
+// effective binding; applying it twice is a no-op.
+//
+// Only an ansible job that names a source is touched. Shell, tofu, hook, backup,
+// and vendor jobs never are, and a job naming no source keeps exactly what it
+// declared. A named source that no longer exists is not an error and is never
+// substituted for another: a redrive or replay of an old job whose source was
+// deleted must keep working, and that job's row already carries what was merged
+// when it was first admitted.
+func ApplySourceDefaults(ctx context.Context, st *store.Store, spec Spec) (Spec, error) {
 	if spec.Kind != executor.KindAnsible || spec.Source == "" {
 		return spec, nil
 	}
-	src, err := q.store.SourceByName(ctx, spec.Source)
+	src, err := st.SourceByName(ctx, spec.Source)
 	if errors.Is(err, store.ErrNotFound) {
 		return spec, nil
 	}
@@ -203,6 +209,9 @@ func (q *Queue) withSourceEgress(ctx context.Context, spec Spec) (Spec, error) {
 		return Spec{}, err
 	}
 	spec.EgressPorts = clean
+	if spec.RunSecretBinding == "" {
+		spec.RunSecretBinding = src.DefaultRunSecrets
+	}
 	return spec, nil
 }
 
@@ -225,7 +234,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 		}
 	}
 
-	spec, err := q.withSourceEgress(ctx, spec)
+	spec, err := ApplySourceDefaults(ctx, q.store, spec)
 	if err != nil {
 		return store.Job{}, err
 	}
