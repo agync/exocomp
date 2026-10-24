@@ -69,6 +69,38 @@ func (s *Service) ResolveSourcePlaybook(ctx context.Context, overridePath, sourc
 	return false, confined, nil
 }
 
+// ResolvePlainSourcePlay resolves a playbook, relative to a registered source's
+// checkout, into what an unattended play runs from: the confined playbook path,
+// the checkout root to use as the working directory (so the tree's own
+// ./ansible.cfg loads), and the source's read-only posture. It is the one
+// resolution a rule-fired playbook and a scheduled play share.
+//
+// A hooked source is refused: an unattended play never composes the lifecycle
+// workflow `exocomp run` owns. The override-wins hooks resolution covers BOTH
+// hook sources, the checkout's own .exocomp/hooks.yml and the operator override
+// under the data dir. The override path mirrors cmd/exocomp/run.go's
+// hooksOverridePath; the two must agree. The checkout must exist on disk
+// (containedPath resolves symlinks on the deepest existing ancestor).
+func (s *Service) ResolvePlainSourcePlay(ctx context.Context, sourceName, playbook string) (abs, root string, readOnly bool, err error) {
+	hooked, abs, err := s.ResolveSourcePlaybook(ctx,
+		filepath.Join(s.dataDir, "hooks", sourceName+".yml"), sourceName, playbook)
+	if err != nil {
+		return "", "", false, err
+	}
+	if hooked {
+		return "", "", false, fmt.Errorf("source %q has hooks or a gate; an unattended play is a plain run", sourceName)
+	}
+	src, err := s.store.SourceByName(ctx, sourceName)
+	if err != nil {
+		return "", "", false, err
+	}
+	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI, src.Writable)
+	if err != nil {
+		return "", "", false, fmt.Errorf("resolve source checkout: %w", err)
+	}
+	return abs, loc.Root, loc.ReadOnly, nil
+}
+
 // ErrSourcePathEscape reports a --source input that resolves outside the
 // source's own checkout. A face renders it as an invalid argument: it is a bad
 // input, not a server fault.
