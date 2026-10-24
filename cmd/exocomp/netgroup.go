@@ -56,6 +56,12 @@ func newNetgroupAddCmd() *cobra.Command {
 				return errors.New("netgroup add: need at least one include CIDR")
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteNetgroupAdd(cmd, rc, args[0], args[1])
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -73,9 +79,8 @@ func newNetgroupAddCmd() *cobra.Command {
 				}
 				return fmt.Errorf("netgroup add: %w", validationError(err))
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s added: %s\n",
-				created.Name, netgroupPrefixesLabel(created.Prefixes, created.Excludes))
-			return err
+			printNetgroupAdded(cmd, created.Name, netgroupPrefixesLabel(created.Prefixes, created.Excludes))
+			return nil
 		},
 	}
 }
@@ -95,6 +100,12 @@ func newNetgroupUpdateCmd() *cobra.Command {
 				return errors.New("netgroup update: need at least one include CIDR")
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteNetgroupUpdate(cmd, rc, args[0], args[1])
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -108,9 +119,8 @@ func newNetgroupUpdateCmd() *cobra.Command {
 				}
 				return fmt.Errorf("netgroup update: %w", validationError(err))
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s updated: %s\n",
-				updated.Name, netgroupPrefixesLabel(updated.Prefixes, updated.Excludes))
-			return err
+			printNetgroupUpdated(cmd, updated.Name, netgroupPrefixesLabel(updated.Prefixes, updated.Excludes))
+			return nil
 		},
 	}
 }
@@ -126,27 +136,36 @@ func newNetgroupListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := openStore()
-			if err != nil {
+			var views []wire.NetgroupView
+			if rc, ok, err := remoteClient(cmd); err != nil {
 				return err
-			}
-			defer func() { _ = st.Close() }()
-
-			rows, err := st.ListNetgroups(cmd.Context())
-			if err != nil {
-				if mode == outputJSON {
-					return failJSON(cmd, err)
+			} else if ok {
+				if views, err = rc.ListNetgroups(cmd.Context()); err != nil {
+					return remoteFail(cmd, mode, err)
 				}
-				return err
+			} else {
+				st, err := openStore()
+				if err != nil {
+					return err
+				}
+				defer func() { _ = st.Close() }()
+				rows, err := st.ListNetgroups(cmd.Context())
+				if err != nil {
+					if mode == outputJSON {
+						return failJSON(cmd, err)
+					}
+					return err
+				}
+				views = wire.NewNetgroupList(rows)
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindNetgroupList, wire.NewNetgroupList(rows))
+				return emitJSON(cmd, wire.KindNetgroupList, views)
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintln(w, "NAME\tPREFIXES")
-			for _, g := range rows {
-				_, _ = fmt.Fprintf(w, "%s\t%s\n", g.Name, netgroupPrefixesLabel(g.Prefixes, g.Excludes))
+			for _, g := range views {
+				_, _ = fmt.Fprintf(w, "%s\t%s\n", g.Name, wireNetgroupLabel(g))
 			}
 			return w.Flush()
 		},
@@ -334,6 +353,12 @@ func newNetgroupRmCmd() *cobra.Command {
 		Short: "Remove a named CIDR set",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteNetgroupRm(cmd, rc, args[0])
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -346,8 +371,8 @@ func newNetgroupRmCmd() *cobra.Command {
 				}
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s removed\n", args[0])
-			return err
+			printNetgroupRemoved(cmd, args[0])
+			return nil
 		},
 	}
 }
@@ -363,6 +388,27 @@ func netgroupPrefixesLabel(includes, excludes []netip.Prefix) string {
 		parts = append(parts, "!"+p.String())
 	}
 	return strings.Join(parts, ",")
+}
+
+// wireNetgroupLabel is netgroupPrefixesLabel for a wire view.
+func wireNetgroupLabel(g wire.NetgroupView) string {
+	parts := append([]string(nil), g.Prefixes...)
+	for _, p := range g.Excludes {
+		parts = append(parts, "!"+p)
+	}
+	return strings.Join(parts, ",")
+}
+
+func printNetgroupAdded(cmd *cobra.Command, name, prefixes string) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s added: %s\n", name, prefixes)
+}
+
+func printNetgroupUpdated(cmd *cobra.Command, name, prefixes string) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s updated: %s\n", name, prefixes)
+}
+
+func printNetgroupRemoved(cmd *cobra.Command, name string) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s removed\n", name)
 }
 
 func joinOrDash(items []string) string {

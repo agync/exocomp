@@ -8,6 +8,10 @@ Newest first.
 
 ## 2026-10-24
 
+- **Silence, mute, check and netgroup verbs over a remote.** [Driving a remote
+  daemon](operations/remote-access.md#writes) lists them with `event list`. `check list`,
+  `check snooze` and `event explain` stay pending: the API's views carry no snooze and no
+  trace.
 - **Schedules and rules over the API.** [The API](operations/api.md#schedules-and-rules-operator)
   and [Driving a remote daemon](operations/remote-access.md#writes) gain the schedule and rule
   writes. [Decision 0027](decisions/0027-credential-plane-over-the-api.md) and [the threat

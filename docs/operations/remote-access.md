@@ -120,10 +120,20 @@ Writes enqueue on the remote daemon and return its own envelope.
 | `secrets add`, `replace`, `rm`, `list` | Seals on the daemon. The value is read from stdin here and sent over the pinned connection; no answer carries it. `rm` of a secret a binding still maps needs `--force` or `--assume-yes`, as locally |
 | `run-secret add`, `rm`, `list` | Changes the bindings on the daemon |
 | `schedule add`, `rm`, `list`, `enable`, `disable`; `rule add`, `rm`, `list`, `enable`, `disable` | Changes the daemon's schedules and rules, checked there as a local add is. A play schedule takes its playbook and `--check`; ansible options after the playbook are set on the daemon's host with `--local`. A rule's `--ssh-identity` names a file on the daemon that its operator allowed. `rule list` shows a shell action's kind, not its argv, which no readonly answer carries. `exocomp reload` applies a schedule change at once |
+| `silence add`, `rm`, `list`; `mute add`, `rm`, `list` | Holds or lifts on the daemon, which stamps the row as created over the API. `--for` is sent as a duration and the daemon counts it from its own clock |
+| `check add`, `update`, `enable`, `disable`, `rm`; `netgroup add`, `update`, `rm`, `list` | Changes the daemon's checks and netgroups, validated there as a local add is. A check's `--target` specs are sent as written |
+| `check probe` | Probes from the daemon, so the result is what the daemon's network sees. It writes nothing and takes a `readonly` token |
+| `event list` | Lists the daemon's events with the same `--source`, `--outcome` and `--limit` |
 
-The source, secret and run-secret verbs take an `operator` token. A deploy key or the fleet key
-that exocomp generated cannot be bound or replaced over the API; do that on the daemon's host
-with `--local` ([Decision 0027](../decisions/0027-credential-plane-over-the-api.md)).
+The source, secret, run-secret, schedule, rule, silence, mute, check and netgroup writes take
+an `operator` token. `check list` and `event explain` stay pending because the API's views carry
+no snooze state and no trace, and `check snooze`, `check unsnooze` and the netgroup and check
+`apply`, `export`, `show`, `usage` and `test` verbs have no route yet. A secret exocomp makes for
+itself, a deploy key, the fleet key or a sealed play or tofu output, cannot be sealed, replaced,
+removed or bound over the API, and neither can the `ab:` and `tf:` bindings that collect outputs
+([Decision 0027](../decisions/0027-credential-plane-over-the-api.md)). Do that on the daemon's
+host with `--local`. A `source rm` followed by an `add` of the same name needs `exocomp --local
+secrets rm source/<name>/deploy-key` there first.
 
 Every write accepts `--idempotency-key` (or `EXOCOMP_IDEMPOTENCY_KEY`), which travels as the
 `Idempotency-Key` header: a retried request dedups to the one job instead of enqueuing a
@@ -135,7 +145,10 @@ another's write (see the [threat model](../security/threat-model.md)).
 `approval.decision` — byte for byte. A *followed* run emits one document, the settled job,
 rather than a stream of per-event envelopes. A followed `command` or `ansible` emits the same
 `command.result` document a local run prints, built from the daemon's job and its events, and
-a gated one emits the approval.
+a gated one emits the approval. The daemon answers a silence, mute, check or netgroup removal
+with no body, so the client prints a small envelope naming what it removed. A remote source,
+secret, run-secret, schedule, rule, silence, mute, check or netgroup verb prints the daemon's
+envelope under `--output json`, where the local verb prints its text.
 
 ## Commands that do not go to the remote
 
