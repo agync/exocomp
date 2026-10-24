@@ -127,3 +127,32 @@ func TestHostOnboardAgainstLocalhost(t *testing.T) {
 		}
 	}
 }
+
+// A secret sealed under the fleet key's name by anything but onboarding is not
+// taken as the key every host will authorize.
+func TestEnsureFleetKeyRefusesAPlantedRow(t *testing.T) {
+	dir := t.TempDir()
+	env, _, err := secrets.Init(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = env.Close() }()
+	st, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	ctx := context.Background()
+
+	sealed, err := env.Seal(fleetKeySecret, "generic", []byte("not the fleet key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateSecret(ctx, store.SecretRow{Name: sealed.Name, Kind: sealed.Kind,
+		Nonce: sealed.Nonce, Ciphertext: sealed.Ciphertext, AAD: sealed.Name + "|" + sealed.Kind}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ensureFleetKey(ctx, st, env); err == nil || !strings.Contains(err.Error(), "not the fleet key") {
+		t.Fatalf("want a refusal of the planted row, got %v", err)
+	}
+}

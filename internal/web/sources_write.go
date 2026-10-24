@@ -187,23 +187,8 @@ func (s *Server) addGitSource(w http.ResponseWriter, r *http.Request, ident iden
 		ref = "main"
 	}
 
-	key, err := source.GenerateDeployKey(name)
+	publicKey, err := s.createGitSource(r.Context(), store.Source{Name: name, URI: url, Ref: ref})
 	if err != nil {
-		s.log.Error("web: source add-git", "err", err.Error())
-		form.ErrForm = sourceSubmitRefusal
-		s.sourceRefusal(w, r, form)
-		return
-	}
-	secretName := sourceDeployKeySecretName(name)
-
-	// Create the source row first, mirroring runSourceAdd's ordering: a
-	// duplicate name is refused before any key material is sealed or stored,
-	// so a colliding name never leaves a sealed deploy key with nothing
-	// referencing it. A later failure rolls the row back best-effort.
-	if _, err := s.store.CreateSource(r.Context(), store.Source{
-		Name: name, Kind: store.SourceGit, URI: url, Ref: ref,
-		DeployKeySecret: secretName, Enabled: true,
-	}); err != nil {
 		if errors.Is(err, store.ErrDuplicate) {
 			s.log.Info("web: source add refused", "err", err.Error(), "by", ident.token.Name)
 			form.ErrName = sourceDuplicateRefusal(name)
@@ -217,34 +202,62 @@ func (s *Server) addGitSource(w http.ResponseWriter, r *http.Request, ident iden
 		return
 	}
 
-	sealed, err := s.sealer.Seal(secretName, deployKeyKind, key.PrivatePEM)
-	if err != nil {
-		if derr := s.store.DeleteSource(r.Context(), name); derr != nil {
-			s.log.Error("web: source add-git rollback failed", "source", name, "seal_err", err, "rollback_err", derr)
-		}
-		form.ErrForm = sourceSubmitRefusal
-		s.sourceRefusal(w, r, form)
-		return
-	}
-	if _, err := s.store.CreateSecret(r.Context(), store.SecretRow{
-		Name: sealed.Name, Kind: sealed.Kind, Nonce: sealed.Nonce, Ciphertext: sealed.Ciphertext,
-		AAD: sealed.Name + "|" + sealed.Kind,
-	}); err != nil {
-		if derr := s.store.DeleteSource(r.Context(), name); derr != nil {
-			s.log.Error("web: source add-git rollback failed", "source", name, "store_err", err, "rollback_err", derr)
-		}
-		form.ErrForm = sourceSubmitRefusal
-		s.sourceRefusal(w, r, form)
-		return
-	}
-
 	s.log.Info("web: source add-git", "source", name, "by", ident.token.Name)
 	vm := sourceGitResultVM{
 		Page: s.pageFor(r, "Sources", "sources"), Name: name, URL: url, Ref: ref,
-		PublicAuthorizedKey: key.PublicAuthorizedKey,
+		PublicAuthorizedKey: publicKey,
 	}
 	s.render(w, r, http.StatusOK, sourceGitResult(vm))
 }
+
+// createGitSource records a git source and seals the deploy key it generates
+// (mirrors cmd/exocomp/source.go's `source add --url`), returning the public
+// half to add to the forge. The row is created first, so a duplicate name is
+// store.ErrDuplicate before any key material is sealed or stored, and a later
+// failure rolls the row back best-effort. The caller has checked s.sealer.
+func (s *Server) createGitSource(ctx context.Context, row store.Source) (string, error) {
+	key, err := source.GenerateDeployKey(row.Name)
+	if err != nil {
+		return "", err
+	}
+	row.Kind = store.SourceGit
+	row.DeployKeySecret = sourceDeployKeySecretName(row.Name)
+	row.Enabled = true
+	if _, err := s.store.CreateSource(ctx, row); err != nil {
+		return "", err
+	}
+	rollback := func(cause error) error {
+		if derr := s.store.DeleteSource(ctx, row.Name); derr != nil {
+			s.log.Error("web: source add-git rollback failed", "source", row.Name, "err", cause, "rollback_err", derr)
+		}
+		return cause
+	}
+	sealed, err := s.sealer.Seal(row.DeployKeySecret, deployKeyKind, key.PrivatePEM)
+	if err != nil {
+		return "", rollback(err)
+	}
+	if _, err := s.store.CreateSecret(ctx, store.SecretRow{
+		Name: sealed.Name, Kind: sealed.Kind, Nonce: sealed.Nonce, Ciphertext: sealed.Ciphertext,
+		AAD: sealed.Name + "|" + sealed.Kind,
+	}); err != nil {
+		if errors.Is(err, store.ErrDuplicate) {
+			// A key left sealed by an earlier source of this name, not a
+			// duplicate source: say so rather than blame the free name.
+			err = fmt.Errorf("%w: %s is already sealed; remove it on the daemon's host first",
+				errDeployKeyExists, row.DeployKeySecret)
+		}
+		return "", rollback(err)
+	}
+	return key.PublicAuthorizedKey, nil
+}
+
+// errGitSync marks a sync that git itself failed, as against a missing source
+// or an unopenable key, so a face can keep git's output out of its answer.
+var errGitSync = errors.New("git")
+
+// errDeployKeyExists refuses a git source whose deploy-key name already holds a
+// sealed secret, an orphan a removed source left behind.
+var errDeployKeyExists = errors.New("deploy key exists")
 
 // handleSourceSetEnabled returns a handler that flips a source's enabled bit,
 // factored so /enable and /disable share one implementation (mirrors the
@@ -418,7 +431,7 @@ func (s *Server) handleSourceRm(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.purgeSourceCaches(r.Context(), src)
+	_ = s.purgeSourceCaches(r.Context(), src)
 	s.log.Info("web: source rm", "source", name, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/sources", "removed "+name)
 }
@@ -516,7 +529,7 @@ func zeroBytes(b []byte) {
 	}
 }
 
-func (s *Server) syncSource(ctx context.Context, name string) (source.SyncResult, error) {
+func (s *Server) syncSource(ctx context.Context, name, refOverride string) (source.SyncResult, error) {
 	src, err := s.store.SourceByName(ctx, name)
 	if err != nil {
 		return source.SyncResult{}, err
@@ -530,7 +543,11 @@ func (s *Server) syncSource(ctx context.Context, name string) (source.SyncResult
 		return source.SyncResult{}, fmt.Errorf("source sync: %w", err)
 	}
 
-	opts := source.SyncOptions{Root: loc.Root, URL: src.URI, Ref: src.Ref, Signed: src.Signed}
+	ref := src.Ref
+	if refOverride != "" {
+		ref = refOverride
+	}
+	opts := source.SyncOptions{Root: loc.Root, URL: src.URI, Ref: ref, Signed: src.Signed}
 	if src.DeployKeySecret != "" {
 		key, err := s.openSealedSecret(ctx, src.DeployKeySecret)
 		if err != nil {
@@ -566,7 +583,7 @@ func (s *Server) syncSource(ctx context.Context, name string) (source.SyncResult
 
 	res, err := source.Sync(ctx, opts)
 	if err != nil {
-		return source.SyncResult{}, fmt.Errorf("source sync: %w", err)
+		return source.SyncResult{}, fmt.Errorf("source sync: %w: %w", errGitSync, err)
 	}
 	if err := s.store.RecordSourceSync(ctx, src.ID, res.Ref, res.SHA); err != nil {
 		return source.SyncResult{}, fmt.Errorf("source sync: record: %w", err)
@@ -594,7 +611,7 @@ func (s *Server) handleSourceSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.syncSource(r.Context(), name)
+	res, err := s.syncSource(r.Context(), name, "")
 	if err != nil {
 		s.log.Error("web: source sync failed", "source", name, "err", err.Error(), "by", ident.token.Name)
 		s.sourceSyncRefusal(w, r, name, "Sync failed — check the daemon log.")
@@ -623,15 +640,15 @@ func (s *Server) handleSourceSync(w http.ResponseWriter, r *http.Request) {
 // re-enabled, so it counts as a reference. The source row is already deleted by
 // the caller. Any failure leaves the caches in place: the failure mode is a
 // stale cache, never a wrong purge.
-func (s *Server) purgeSourceCaches(ctx context.Context, src store.Source) {
+func (s *Server) purgeSourceCaches(ctx context.Context, src store.Source) bool {
 	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI, src.Writable)
 	if err != nil {
-		return
+		return false
 	}
 	key := deps.SourceKey(loc.Root)
 	rows, err := s.store.ListSources(ctx)
 	if err != nil {
-		return
+		return false
 	}
 	for _, other := range rows {
 		otherLoc, err := source.Resolve(s.dataDir, other.Kind, other.Name, other.URI, other.Writable)
@@ -639,10 +656,11 @@ func (s *Server) purgeSourceCaches(ctx context.Context, src store.Source) {
 			continue
 		}
 		if deps.SourceKey(otherLoc.Root) == key {
-			return
+			return false
 		}
 	}
 	if err := deps.RemoveProjectCaches(s.dataDir, loc.Root); err != nil {
 		s.log.Warn("web: source rm: purge caches failed", "source", src.Name, "error", err)
 	}
+	return true
 }

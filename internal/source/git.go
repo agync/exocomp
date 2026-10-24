@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
 // GitBinary is the pinned tool this package shells out to.
@@ -55,6 +56,17 @@ func ForgeHost(rawURL string) string {
 		host = host[at+1:]
 	}
 	return host
+}
+
+// ValidRef reports whether ref can be handed to git as a ref: it may not start
+// with "-", which git would read as an option on checkout and reset, and may
+// not hold whitespace or a control character. Every face that stores or syncs a
+// ref passes through Sync, which refuses one that is not.
+func ValidRef(ref string) bool {
+	if strings.HasPrefix(ref, "-") {
+		return false
+	}
+	return !strings.ContainsFunc(ref, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) })
 }
 
 // gitSchemes are the explicit transports git itself understands. A string
@@ -162,6 +174,9 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 	}
 	if strings.TrimSpace(opts.Ref) == "" {
 		return SyncResult{}, fmt.Errorf("source: sync %s: no ref to pin", opts.Root)
+	}
+	if !ValidRef(opts.Ref) {
+		return SyncResult{}, fmt.Errorf("source: sync %s: %q is not a git ref", opts.Root, opts.Ref)
 	}
 	git := opts.Git
 	if git == "" {

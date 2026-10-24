@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-10-24
 
+- **Sources, secrets and run-secrets over the API.** [Decision
+  0027](decisions/0027-credential-plane-over-the-api.md) records the operator-scope routes and
+  the keys that stay on the host; [the API](operations/api.md#sources-secrets-and-run-secrets-operator),
+  [Driving a remote daemon](operations/remote-access.md#writes) and [the threat
+  model](security/threat-model.md) follow.
 - **The CLI follows its default remote.** [Decision 0026](decisions/0026-remote-first-cli.md)
   records that a `hosts.toml` default sends every command to that daemon and `--local` opts
   out. [Driving a remote daemon](operations/remote-access.md) gains the commands that stay
