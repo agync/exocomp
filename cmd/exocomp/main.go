@@ -30,6 +30,8 @@ func newRootCmd() *cobra.Command {
 		Short:         "exocomp homelab control plane",
 		SilenceUsage:  true,
 		SilenceErrors: false,
+
+		PersistentPreRunE: guardRemoteSelection,
 	}
 
 	addOutputFlag(root)
