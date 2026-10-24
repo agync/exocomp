@@ -38,6 +38,9 @@ templ sourceDetail(vm sourceDetailVM) {
 				if vm.EgressDefaultLabel() != "" {
 					<div><dt>Egress ports</dt><dd class="mono">{ vm.EgressDefaultLabel() }</dd></div>
 				}
+				if vm.DefaultRunSecrets != "" {
+					<div><dt>Run-secrets</dt><dd class="mono">{ vm.DefaultRunSecrets }</dd></div>
+				}
 			</dl>
 			if vm.Operator {
 				<div class="rowactions">
@@ -83,6 +86,18 @@ templ sourceDetail(vm sourceDetailVM) {
 					</div>
 				</form>
 				<p class="meta">{ vm.EgressCliEcho() } on the host</p>
+			</div>
+			<div class="card span2 mt18">
+				<div class="kicker">Run-secrets default</div>
+				<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run-secrets")) } class="writeform">
+					@fieldInput(vm.RunSecretsDefaultField())
+					<p class="meta">Every ansible run from this source, including one a rule fires, injects this binding's env unless the run names its own. Scheduled, handoff and bootstrap plays name no source and do not inherit it. The vault project stays per run.</p>
+					@formStatus(false, vm.RunSecretsRefusal, "Setting run-secrets")
+					<div class="actions">
+						<button type="submit" class="btn">Set run-secrets default</button>
+					</div>
+				</form>
+				<p class="meta">{ vm.RunSecretsCliEcho() } on the host</p>
 			</div>
 		}
 		<div class="card span2 mt18">

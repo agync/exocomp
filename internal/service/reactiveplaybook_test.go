@@ -205,3 +205,43 @@ func playbookSourceStore(t *testing.T) (*service.Service, *store.Store) {
 	}
 	return service.New(st, t.TempDir(), nil), st
 }
+
+// TestRulePlaybookInheritsSourceRunSecrets: a rule declares no binding, so the
+// spec it builds carries none and admission supplies the source default, the
+// path a rule-fired play takes to its credentials (Decision 0024).
+func TestRulePlaybookInheritsSourceRunSecrets(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	checkout := t.TempDir()
+	if err := os.WriteFile(filepath.Join(checkout, "site.yml"), []byte("- hosts: all\n"), 0o600); err != nil {
+		t.Fatalf("write playbook: %v", err)
+	}
+	src, err := st.CreateSource(ctx, store.Source{Name: "ops", Kind: store.SourcePath, URI: checkout, Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+	if _, err := st.AddRunSecret(ctx, store.RunSecret{
+		Binding: "tree-vault", EnvName: "VAULT_PASSWORD", SecretName: "vault-pass",
+	}); err != nil {
+		t.Fatalf("AddRunSecret: %v", err)
+	}
+	if _, err := st.SetSourceRunSecrets(ctx, src.ID, "tree-vault"); err != nil {
+		t.Fatalf("SetSourceRunSecrets: %v", err)
+	}
+	svc := service.New(st, t.TempDir(), nil)
+
+	spec, err := buildPlaybookSpec(t, svc, "ops", "site.yml", "laptop")
+	if err != nil {
+		t.Fatalf("BuildPlaybookSpec: %v", err)
+	}
+	if spec.RunSecretBinding != "" {
+		t.Fatalf("builder set binding %q; a rule declares none", spec.RunSecretBinding)
+	}
+	admitted, err := queue.ApplySourceDefaults(ctx, st, spec)
+	if err != nil {
+		t.Fatalf("ApplySourceDefaults: %v", err)
+	}
+	if admitted.RunSecretBinding != "tree-vault" {
+		t.Errorf("admitted binding = %q, want tree-vault", admitted.RunSecretBinding)
+	}
+}

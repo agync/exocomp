@@ -157,6 +157,14 @@ templ approvalSurface(vm approvalVM) {
 						</div>
 					}
 
+					<!-- the run-secret binding the released job receives, a name only -->
+					if vm.RunSecretBinding != "" {
+						<div class="approve-block">
+							<span class="keyword">Run-secrets</span>
+							<p class="mono">{ vm.RunSecretBinding }</p>
+						</div>
+					}
+
 					<!-- (3) provenance + standing guardrail as copy -->
 					<div class="approve-block">
 						<span class="keyword">Why this is asking</span>

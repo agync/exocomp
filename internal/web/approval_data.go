@@ -38,6 +38,8 @@ func (s *Server) approvalVM(r *http.Request, id int64, _ string) (approvalVM, er
 		// The effective egress grant the released job may open, the same set
 		// the job detail's Egress ports tile shows.
 		vm.EgressPorts = job.Args.EgressPorts
+		// The run-secret binding the released job receives, a name only.
+		vm.RunSecretBinding = job.Args.RunSecretBinding
 		vm.Provenance = fmt.Sprintf("Job %d (%s) was gated before it can apply; it was triggered %s.",
 			job.ID, job.Runbook, job.Trigger)
 		// The triggering event names the rule that raised the gate: only the

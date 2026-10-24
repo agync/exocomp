@@ -21,11 +21,12 @@ import (
 // the engine stamps after the builder returns. The engine still owns enqueue,
 // gate, and approval; this only answers what a match runs and from where.
 //
-// A rule playbook is a plain, vault-less, inventory-discovery play for v1: no
-// run-secrets or vault binding on rules, and a hooked source is refused — a
-// rule never composes the lifecycle workflow `exocomp run` owns. The source
-// checkout must exist on disk (containedPath resolves symlinks on the deepest
-// existing ancestor), the same posture as `playbook run --source`.
+// A rule playbook is an inventory-discovery play: a rule declares no run-secrets
+// binding or vault project of its own, so the spec leaves the binding empty and
+// queue admission fills in the source's default (Decision 0024). A hooked source
+// is refused — a rule never composes the lifecycle workflow `exocomp run` owns.
+// The source checkout must exist on disk (containedPath resolves symlinks on
+// the deepest existing ancestor), the same posture as `playbook run --source`.
 func (s *Service) BuildPlaybookSpec(ctx context.Context, ev reactive.Event, rule store.Rule) (queue.Spec, error) {
 	if rule.Action.Source == "" {
 		return queue.Spec{}, fmt.Errorf("rule %q: playbook action names no source", rule.Name)

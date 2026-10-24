@@ -30,7 +30,7 @@ func (q *Queue) EnqueueGated(ctx context.Context, spec Spec) (store.Job, error) 
 		}
 	}
 
-	spec, err := q.withSourceEgress(ctx, spec)
+	spec, err := ApplySourceDefaults(ctx, q.store, spec)
 	if err != nil {
 		return store.Job{}, err
 	}

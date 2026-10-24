@@ -50,6 +50,10 @@ exocomp rule add auto-disk-cleanup \
   --require-approval
 ```
 
+A playbook rule declares no run-secrets binding or vault project of its own. Each fire inherits
+the source's default run-secrets binding when one is set (`exocomp source run-secrets`), which is
+how a rule decrypts a tree whose vault password is an env var.
+
 The `--expr` expression is compiled and evaluated using Google CEL:
 - Safe execution: CEL expressions cannot invoke system calls, allocate unbounded memory, or hang indefinitely.
 - Idempotent: Rules evaluate strictly against the normalized event payload and system status.

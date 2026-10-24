@@ -76,6 +76,10 @@ exocomp playbook run playbooks/cert.yml \
   --run-secrets cert-env
 ```
 
+A source whose runs always need the same binding can carry it as a default
+(`exocomp source run-secrets homelab cert-env`); a run that passes its own `--run-secrets`
+overrides it. See [Sources](sources.md#source-scoped-run-secrets-default).
+
 During execution:
 1. The executor stages the secret value into a RAM-backed `/dev/shm` session file or injects it directly into the process environment.
 2. The executor's stream redactor scans all subprocess stdout and stderr streams against the active secret values, replacing any matched byte sequences with `[redacted · secret]`.

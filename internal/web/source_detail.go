@@ -101,6 +101,16 @@ type sourceDetailVM struct {
 	// detail page when a set is refused (a junk or out-of-range port). Empty
 	// at rest.
 	EgressRefusal string
+	// DefaultRunSecrets is the operator-set run-secret binding every ansible run
+	// naming this source inherits unless it names its own (Decision 0024). A
+	// binding name only. Empty renders no Run-secrets line.
+	DefaultRunSecrets string
+	// RunSecretsInput is the run-secrets form's typed value on a 422 re-render;
+	// empty falls back to the current default.
+	RunSecretsInput string
+	// RunSecretsRefusal is the run-secrets verb's refusal copy shown on the
+	// detail page when the binding has no pairs. Empty at rest.
+	RunSecretsRefusal string
 }
 
 // sourceRunForm is one launcher tab's refusal state: the typed values an
@@ -235,13 +245,16 @@ func firstInvalid(f *sourceRunForm, field string) bool {
 // words go to the log; the drawer's meta and status lines carry these
 // sentences.
 const (
-	sourcePlaybookRefusal  = "Choose a playbook, or give a path relative to the checkout."
-	sourceLimitRefusal     = "The limit is one host pattern — it can't carry a newline."
-	sourceEgressRefusal    = "Egress ports are numbers from 1 to 65535 — like 22, 443."
-	sourceTimeoutRefusal   = "The timeout is a duration — like 10m or 1h."
-	sourceHostRefusal      = "Give a host pattern — like web or fedora:!nas."
-	sourceCommandRefusal   = "Give the command to run."
-	sourceRunSubmitRefusal = "That run can't be enqueued — fix the host pattern or command."
+	sourcePlaybookRefusal = "Choose a playbook, or give a path relative to the checkout."
+	sourceLimitRefusal    = "The limit is one host pattern — it can't carry a newline."
+	sourceEgressRefusal   = "Egress ports are numbers from 1 to 65535 — like 22, 443."
+	// sourceRunSecretsRefusal is the run-secrets default's refusal: the binding
+	// must already hold a pair, so a typo fails here and not when a run fires.
+	sourceRunSecretsRefusal = "That binding has no secrets — add a pair to it first (exocomp run-secret add)."
+	sourceTimeoutRefusal    = "The timeout is a duration — like 10m or 1h."
+	sourceHostRefusal       = "Give a host pattern — like web or fedora:!nas."
+	sourceCommandRefusal    = "Give the command to run."
+	sourceRunSubmitRefusal  = "That run can't be enqueued — fix the host pattern or command."
 	// sourceRemoveConfirmRefusal is the rm verb's confirm-gate refusal: the
 	// shared confirm dialog's hidden confirmed=1 is the safety, and a
 	// confirmed-less remove is refused on the detail page.
@@ -329,6 +342,32 @@ func (vm sourceDetailVM) EgressDefaultField() fieldMeta {
 		Help:   "The default every run from this source inherits. Empty clears it.",
 		ErrMsg: vm.EgressRefusal,
 	}
+}
+
+// RunSecretsDefaultField is the run-secrets default form's field state: the
+// typed value kept on a 422 re-render, else the current default; the refusal on
+// a refusal, else the at-rest help. It never carries a secret value.
+func (vm sourceDetailVM) RunSecretsDefaultField() fieldMeta {
+	v := vm.RunSecretsInput
+	if v == "" {
+		v = vm.DefaultRunSecrets
+	}
+	return fieldMeta{
+		ID: "src-run-secrets", Label: "Run-secrets binding", Name: "run_secrets",
+		Value: v, Placeholder: "tree-vault",
+		Help:   "The default every run from this source inherits. Empty clears it.",
+		ErrMsg: vm.RunSecretsRefusal,
+	}
+}
+
+// RunSecretsCliEcho is the run-secrets card's one-line contract: the exact host
+// command that records the same default.
+func (vm sourceDetailVM) RunSecretsCliEcho() string {
+	line := "same as exocomp source run-secrets " + vm.Source.Name
+	if vm.DefaultRunSecrets != "" {
+		return line + " " + vm.DefaultRunSecrets
+	}
+	return line + " <binding>"
 }
 
 // EgressCliEcho is the egress card's one-line contract (the page echoes CLI
@@ -431,6 +470,9 @@ func (s *Server) sourceDetailVMFor(w http.ResponseWriter, r *http.Request, name 
 		// The operator-set default egress set (Decision 0023), read for
 		// everyone; the template renders its line only when non-empty.
 		DefaultEgress: src.ExtraEgressPorts,
+		// The operator-set default run-secret binding name (Decision 0024),
+		// read for everyone; a name only, never a value.
+		DefaultRunSecrets: src.DefaultRunSecrets,
 	}
 	if r.URL.Query().Get("tab") == "command" {
 		vm.Tab = "command"
