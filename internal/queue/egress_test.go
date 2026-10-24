@@ -263,3 +263,110 @@ func TestEnqueueGatedUnionsSourceEgressDefault(t *testing.T) {
 		t.Errorf("stored EgressPorts = %v, want %v (union of default and declared)", got.Args.EgressPorts, want)
 	}
 }
+
+// newBoundSource registers a source and, when binding is non-empty, records one
+// pair under it and sets it as the source's default run-secret binding, through
+// the real store.
+func newBoundSource(t *testing.T, st *store.Store, name, binding string) {
+	t.Helper()
+	ctx := context.Background()
+	src, err := st.CreateSource(ctx, store.Source{Name: name, Kind: store.SourceGit, Enabled: true})
+	if err != nil {
+		t.Fatalf("create source %q: %v", name, err)
+	}
+	if binding == "" {
+		return
+	}
+	if _, err := st.AddRunSecret(ctx, store.RunSecret{
+		Binding: binding, EnvName: "VAULT_PASSWORD", SecretName: "vault-pass",
+	}); err != nil {
+		t.Fatalf("add run secret %q: %v", binding, err)
+	}
+	if _, err := st.SetSourceRunSecrets(ctx, src.ID, binding); err != nil {
+		t.Fatalf("set source %q run-secrets: %v", name, err)
+	}
+}
+
+// TestEnqueueInheritsSourceRunSecrets is the admission hop for Decision 0024: an
+// ansible job naming a source that passes no binding has the source default
+// recorded on its row, ungated and gated alike, so whichever process claims it
+// resolves the same env. Dropping the fill from either entry point fails this.
+func TestEnqueueInheritsSourceRunSecrets(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+	newBoundSource(t, st, "infra", "vault")
+
+	queued, err := q.Enqueue(ctx, ansibleSpec("infra"))
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	gated, err := q.EnqueueGated(ctx, ansibleSpec("infra"))
+	if err != nil {
+		t.Fatalf("enqueue gated: %v", err)
+	}
+	for name, id := range map[string]int64{"queued": queued.ID, "gated": gated.ID} {
+		got, err := st.GetJob(ctx, id)
+		if err != nil {
+			t.Fatalf("get %s job: %v", name, err)
+		}
+		if got.Args.RunSecretBinding != "vault" {
+			t.Errorf("%s RunSecretBinding = %q, want vault (the source default)", name, got.Args.RunSecretBinding)
+		}
+	}
+}
+
+// TestEnqueueExplicitRunSecretsWinOverSourceDefault: a run that names its own
+// binding keeps it; the source default never replaces or merges with it.
+func TestEnqueueExplicitRunSecretsWinOverSourceDefault(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+	newBoundSource(t, st, "infra", "vault")
+
+	spec := ansibleSpec("infra")
+	spec.RunSecretBinding = "other"
+	job, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	got, err := st.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if got.Args.RunSecretBinding != "other" {
+		t.Errorf("RunSecretBinding = %q, want other (explicit wins)", got.Args.RunSecretBinding)
+	}
+}
+
+// TestEnqueueRunSecretsDefaultOnlyForSourcedAnsible is the negative half: a
+// non-ansible job naming the source, an ansible job naming none, a source with
+// no default, and a source that no longer exists all keep an empty binding.
+func TestEnqueueRunSecretsDefaultOnlyForSourcedAnsible(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+	newBoundSource(t, st, "infra", "vault")
+	newBoundSource(t, st, "plain", "")
+
+	shell := shellSpec("/bin/true")
+	shell.Source = "infra"
+	for name, spec := range map[string]queue.Spec{
+		"shell":      shell,
+		"sourceless": ansibleSpec(""),
+		"no-default": ansibleSpec("plain"),
+		"missing":    ansibleSpec("gone"),
+	} {
+		job, err := q.Enqueue(ctx, spec)
+		if err != nil {
+			t.Fatalf("enqueue %s: %v", name, err)
+		}
+		got, err := st.GetJob(ctx, job.ID)
+		if err != nil {
+			t.Fatalf("get %s job: %v", name, err)
+		}
+		if got.Args.RunSecretBinding != "" {
+			t.Errorf("%s RunSecretBinding = %q, want empty", name, got.Args.RunSecretBinding)
+		}
+	}
+}

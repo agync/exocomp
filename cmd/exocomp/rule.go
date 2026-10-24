@@ -68,9 +68,11 @@ func newRuleAddCmd() *cobra.Command {
 			"registered source's checkout (--repo-source) under ansible; notify sends a " +
 			"push and creates no job. tofu-apply is destructive and is approval-gated " +
 			"whatever --require-approval says.\n\n" +
-			"A playbook rule is a plain, vault-less, inventory-discovery play for v1: it " +
-			"carries no run-secrets or vault binding, and --limit is required because an " +
-			"un-limited rule would run every host the inventory names.",
+			"A playbook rule is an inventory-discovery play: --limit is required because an " +
+			"un-limited rule would run every host the inventory names. It declares no " +
+			"run-secrets binding or vault project of its own; each fire inherits the " +
+			"source's default run-secrets binding when one is set (`exocomp source " +
+			"run-secrets`), and no vault project is derived.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, argv := args[0], args[1:]

@@ -531,6 +531,13 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 		defer func() { _ = env.Close() }()
 	}
 
+	// The binding is resolved from the spec before the queue admits it, so the
+	// source default is folded in first or this drain would run without the
+	// credentials the recorded row names (Decision 0024).
+	spec, err := queue.ApplySourceDefaults(ctx, st, spec)
+	if err != nil {
+		return store.Job{}, err
+	}
 	runSecrets, secretPlain, err := resolveRunSecrets(ctx, st, env, spec.RunSecretBinding, spec.Inventory)
 	if err != nil {
 		return store.Job{}, err
