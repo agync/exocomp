@@ -224,6 +224,7 @@ func TestExitCodeTable(t *testing.T) {
 		{wire.CodeConcurrencyHeld, wire.ExitConflict},
 		{wire.CodeStalePlan, wire.ExitConflict},
 		{wire.CodeKDFBusy, wire.ExitBusy},
+		{wire.CodeRemoteUnsupported, wire.ExitFailure},
 		{wire.CodeInternal, wire.ExitFailure},
 	}
 	for _, c := range cases {

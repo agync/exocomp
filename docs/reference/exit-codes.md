@@ -56,4 +56,5 @@ The error codes map 1:1 onto internal store, reactive, and auth sentinels:
 | `streams_over_cap` | `CodeStreamsOverCap` | Too many live streams; close a tab or retry shortly |
 | `unauthenticated` | `web.ErrUnauthenticated` | Supply a valid token or session |
 | `forbidden` | `CodeForbidden` | Token scope is too low for the verb; mint one with higher scope |
+| `remote_unsupported` | `wire.ErrRemoteUnsupported` | The command has no remote path; pass `--local` or run it on the daemon's host (exit 1) |
 | `internal` | `CodeInternal` | Fallback for unexpected internal errors |
