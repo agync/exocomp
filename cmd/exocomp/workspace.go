@@ -724,7 +724,6 @@ func newWorkspacePlanCmd() *cobra.Command {
 			if remote {
 				return runRemoteWorkspace(cmd, rc, op)
 			}
-			noteLocalRun(cmd)
 			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), op))
 		},
 	}
@@ -776,7 +775,6 @@ func newWorkspaceApplyCmd() *cobra.Command {
 			if remote {
 				return runRemoteWorkspace(cmd, rc, op)
 			}
-			noteLocalRun(cmd)
 			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), op))
 		},
 	}
@@ -825,7 +823,6 @@ func newWorkspaceDestroyCmd() *cobra.Command {
 			if remote {
 				return runRemoteWorkspace(cmd, rc, op)
 			}
-			noteLocalRun(cmd)
 			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), op))
 		},
 	}

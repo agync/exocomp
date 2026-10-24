@@ -49,7 +49,7 @@ func newLoginCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "alias to store the remote under (default: the endpoint's first host label)")
 	cmd.Flags().BoolVar(&noDefault, "no-default", false,
-		"do not adopt this as the default remote for a valueless --remote")
+		"do not make this the default remote, which every command uses unless it passes --remote or --local")
 	cmd.Flags().BoolVar(&replacePin, "replace-pin", false,
 		"replace an existing DIFFERENT fingerprint or endpoint for this alias (a re-key "+
 			"you confirmed out of band; --assume-yes does not grant this)")
@@ -125,9 +125,9 @@ func runLogin(cmd *cobra.Command, endpoint, name string, makeDefault, replacePin
 
 	cfg.Hosts[alias] = hostEntry{Endpoint: endpoint, Fingerprint: fp, Token: token}
 	if makeDefault && cfg.Default == "" {
-		// Only fill an empty default: a valueless --remote then resolves to this
-		// first-pinned remote, without silently changing an operator's existing
-		// choice. A bare command with no --remote/env stays local regardless.
+		// Only fill an empty default: every command without --remote, the env,
+		// or --local then goes to this first-pinned remote, and an operator's
+		// existing choice is never silently changed.
 		cfg.Default = alias
 	}
 	if err := saveHostsConfig(cfg); err != nil {
@@ -137,6 +137,11 @@ func runLogin(cmd *cobra.Command, endpoint, name string, makeDefault, replacePin
 	verb := "pinned"
 	if had {
 		verb = "updated"
+	}
+	if cfg.Default == alias {
+		_, _ = fmt.Fprintf(out, "%s remote %q; it is the default remote, so commands go there unless they pass --local\n",
+			verb, alias)
+		return nil
 	}
 	_, _ = fmt.Fprintf(out, "%s remote %q; use it with --remote %s\n", verb, alias, alias)
 	return nil
