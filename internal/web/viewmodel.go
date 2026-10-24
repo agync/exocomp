@@ -3518,7 +3518,10 @@ type approvalVM struct {
 	// its kind's defaults — the same set the job detail's Egress ports tile
 	// shows. Empty is the quiet default posture.
 	EgressPorts []int
-	CanDecide   bool
+	// RunSecretBinding names the run-secret binding the released job receives,
+	// explicit or inherited from its source's default. A name, never a value.
+	RunSecretBinding string
+	CanDecide        bool
 	// Kill is the global-kill form's refusal state (the forms pattern): nil at
 	// rest, the filled form on a 422 re-render with the kill details open.
 	Kill *jobKillForm

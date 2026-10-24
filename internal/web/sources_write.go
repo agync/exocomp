@@ -45,6 +45,7 @@ func (s *Server) registerSourceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /sources/{name}/enable", s.requireAuth(s.handleSourceSetEnabled(true)))
 	mux.HandleFunc("POST /sources/{name}/disable", s.requireAuth(s.handleSourceSetEnabled(false)))
 	mux.HandleFunc("POST /sources/{name}/egress", s.requireAuth(s.handleSourceEgress))
+	mux.HandleFunc("POST /sources/{name}/run-secrets", s.requireAuth(s.handleSourceRunSecrets))
 	mux.HandleFunc("POST /sources/{name}/rm", s.requireAuth(s.handleSourceRm))
 }
 
@@ -330,6 +331,60 @@ func (s *Server) sourceEgressDefaultRefusal(w http.ResponseWriter, r *http.Reque
 	}
 	vm.EgressRefusal = msg
 	vm.EgressInput = typed
+	s.render(w, r, http.StatusUnprocessableEntity, sourceDetail(vm))
+}
+
+// handleSourceRunSecrets sets or clears a source's operator-scoped default
+// run-secret binding (Decision 0024) — the web face of `exocomp source
+// run-secrets <name> [binding]`. It mirrors handleSourceEgress: operator-gated,
+// no reauth (it stores a binding name and seals nothing). A binding with no
+// pairs re-renders the detail page at 422 with the refusal; an empty field
+// clears the default.
+func (s *Server) handleSourceRunSecrets(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	src, err := s.store.SourceByName(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "no source named "+name, http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+
+	binding := strings.TrimSpace(r.PostFormValue("run_secrets"))
+	if _, err := s.store.SetSourceRunSecrets(r.Context(), src.ID, binding); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.log.Info("web: source run-secrets refused", "source", name, "by", ident.token.Name)
+			s.sourceRunSecretsRefusal(w, r, name, sourceRunSecretsRefusal, binding)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+
+	if binding == "" {
+		s.log.Info("web: source run-secrets cleared", "source", name, "by", ident.token.Name)
+		s.redirectFlash(w, r, "/sources/"+name, "cleared run-secrets default for "+name)
+		return
+	}
+	s.log.Info("web: source run-secrets", "source", name, "binding", binding, "by", ident.token.Name)
+	s.redirectFlash(w, r, "/sources/"+name, "set run-secrets default for "+name)
+}
+
+// sourceRunSecretsRefusal re-renders the source detail page at 422 with the
+// run-secrets form's refusal on its field line and the typed value kept.
+func (s *Server) sourceRunSecretsRefusal(w http.ResponseWriter, r *http.Request, name, msg, typed string) {
+	vm, err := s.sourceDetailVMFor(w, r, name)
+	if err != nil {
+		return
+	}
+	vm.RunSecretsRefusal = msg
+	vm.RunSecretsInput = typed
 	s.render(w, r, http.StatusUnprocessableEntity, sourceDetail(vm))
 }
 
