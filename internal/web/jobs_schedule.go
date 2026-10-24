@@ -7,6 +7,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/sched"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -92,7 +93,8 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 		// form shows it read-only for operator confidence but never submits
 		// it, so a stale or tampered form can never schedule a different
 		// command than the one this job actually ran.
-		Args: store.ScheduleArgs{Argv: job.Args.Argv},
+		Args:      store.ScheduleArgs{Argv: job.Args.Argv},
+		CreatedBy: service.ActorLabel(service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name, Face: "web"}),
 	})
 	if errors.Is(err, store.ErrDuplicate) {
 		s.log.Info("web: job schedule refused", "err", err.Error(), "by", ident.token.Name)

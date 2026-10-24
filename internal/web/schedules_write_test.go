@@ -75,6 +75,9 @@ func TestScheduleAddCreates(t *testing.T) {
 			if !r.Enabled {
 				t.Fatal("newly created schedule should be enabled")
 			}
+			if r.CreatedBy != "token laptop via web" {
+				t.Fatalf("created by = %q, want the browser session's token", r.CreatedBy)
+			}
 		}
 	}
 	if !found {
