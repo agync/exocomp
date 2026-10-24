@@ -16,11 +16,15 @@ import (
 	"exocomp.dev/exocomp/internal/wire"
 )
 
+// shellStartedLine is the last system line the worker writes when a shell job
+// starts; waiting on the first ("running ...") would race the second.
+const shellStartedLine = "running UNSANDBOXED (shell)"
+
 // waitJobEvent polls until an event whose Msg contains want exists, returning
 // the full tail at that point. A long-running shell job's only automatic
-// event is the "running ..." system line emitted when its worker goroutine
-// starts (queue.execute) — this waits past that race instead of guessing a
-// Seq number for it.
+// events are the system lines its worker goroutine writes at start
+// (queue.execute): "running ..." and then the unsandboxed line. This waits
+// past that race instead of guessing a Seq number for them.
 func waitJobEvent(t *testing.T, h *harness, id int64, want string, within time.Duration) []store.JobEvent {
 	t.Helper()
 	deadline := time.Now().Add(within)
@@ -60,9 +64,10 @@ func TestJobStreamSinceBackfillsMissedEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
-	// The point the page's own render would have last seen — the "running
-	// ..." system line the worker emits at start, nothing more for a sleep.
-	rendered := waitJobEvent(t, h, job.ID, "running", 3*time.Second)
+	// The point the page's own render would have last seen — the system
+	// lines the worker emits at start, the last of them a shell job's
+	// unsandboxed line, nothing more for a sleep.
+	rendered := waitJobEvent(t, h, job.ID, shellStartedLine, 3*time.Second)
 	since := rendered[len(rendered)-1].Seq
 
 	// Both land before the client connects at all — simulating the gap
@@ -118,7 +123,7 @@ func TestJobStreamNoSinceKeepsOldBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
-	waitJobEvent(t, h, job.ID, "running", 3*time.Second)
+	waitJobEvent(t, h, job.ID, shellStartedLine, 3*time.Second)
 
 	token := h.mint(t, "op", "operator")
 	client := login(t, ts.URL, token)
@@ -235,7 +240,7 @@ func TestJobDetailPassesLastRenderedSeq(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
-	rendered := waitJobEvent(t, h, job.ID, "running", 3*time.Second)
+	rendered := waitJobEvent(t, h, job.ID, shellStartedLine, 3*time.Second)
 	last := rendered[len(rendered)-1].Seq
 
 	op := h.mint(t, "laptop", "operator")

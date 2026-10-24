@@ -301,7 +301,7 @@ speak stdio MCP runs an off-the-shelf http-to-stdio bridge (e.g. `npx mcp-remote
 | list_events, explain_event (Trace) | schedule_create/enable/disable (W) | |
 | list_approvals, get_approval | secret_add/rotate/rm (W, value only IN) | |
 | list_secrets (metadata only) | source/inventory/runsecret add/rm (W) | |
-| list_backups, health/doctor | | |
+| list_backups, health/doctor | rule add/rm/enable/disable, schedule rm (W, `/api/v1` only) | |
 
 **Never expose as tools:** `reveal_secret` / any plaintext read (no code path exists to call),
 raw ciphertext, or an approval **decision link** as a return value — a decision URL is a

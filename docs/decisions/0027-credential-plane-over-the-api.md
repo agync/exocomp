@@ -77,11 +77,23 @@ bearer.** `POST /sources`, `DELETE /sources/{name}`, `POST /sources/{name}/sync`
   credential for every operator-sealed value, and is handed only to a principal trusted with
   them.
 - A path source names a directory on the daemon's host, writable if asked, and a run from it
-  reads that tree. A sandboxed run is still refused the data dir, its ancestors and its state
-  files (the database, the host key, the keyring). The browser already offered the same to an
+  reads that tree. A sandboxed run (ansible, tofu, a governed CLI tool) is still refused the data
+  dir, its ancestors and its state files (the database, the host key, the keyring), and the API
+  refuses such a path when the source is added. The browser already offered the same to an
   operator session.
+- **A shell schedule or rule runs unsandboxed.** The schedule and rule routes
+  (`POST /schedules`, `POST /rules`) take the same `operator` scope. A `shell` schedule or rule
+  runs its argv as the daemon's user through the plain shell driver, with no kernel sandbox at
+  any tier, so it reaches the data dir, the keyring and the host key as any process of that user
+  does. This is accepted under the single-operator trust model ([threat
+  model](../security/threat-model.md), "The operator is trusted"): an operator token is trusted
+  to run arbitrary commands as that user. The row records who created it (`created_by`, in the
+  job ledger's words, from the API, the CLI and the browser's schedule forms), and every shell
+  job writes
+  `running UNSANDBOXED (shell)` to its log when it runs, from the daemon or an inline drain.
 - The browser's secrets form does not reserve these names. The reservation covers the API.
-- These writes record the token in the daemon log, not on a ledger row, like the check and
-  netgroup writes (threat model, "Config writes leave no actor").
+- The source, secret and run-secret writes record the token in the daemon log, not on a ledger
+  row, like the check and netgroup writes (threat model, "Config writes leave no actor"). A
+  schedule or rule records its creator on its row.
 - `source sync` runs the git fetch inside the request, as the browser's Sync does. A slow forge
   holds the request open until the sync ends or the client gives up.

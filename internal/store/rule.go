@@ -67,6 +67,9 @@ type Rule struct {
 	DailyCap        int
 	RequireApproval bool
 	Enabled         bool
+	// CreatedBy names who created the rule, in the job ledger's words; empty
+	// for a row from before it was recorded.
+	CreatedBy string
 }
 
 // NewRule describes a rule to create. It starts enabled.
@@ -79,10 +82,11 @@ type NewRule struct {
 	CooldownS       int
 	DailyCap        int
 	RequireApproval bool
+	CreatedBy       string
 }
 
 const ruleColumns = `id, name, source_filter, cel_expr, action_kind,
-	action_args_json, cooldown_s, daily_cap, require_approval, enabled`
+	action_args_json, cooldown_s, daily_cap, require_approval, enabled, created_by`
 
 // CreateRule inserts an enabled rule. Names are unique.
 func (s *Store) CreateRule(ctx context.Context, n NewRule) (Rule, error) {
@@ -92,10 +96,10 @@ func (s *Store) CreateRule(ctx context.Context, n NewRule) (Rule, error) {
 	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO rule (name, source_filter, cel_expr, action_kind, action_args_json,
-		                  cooldown_s, daily_cap, require_approval, enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+		                  cooldown_s, daily_cap, require_approval, enabled, created_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
 		n.Name, n.SourceFilter, n.CELExpr, n.ActionKind, string(args),
-		n.CooldownS, n.DailyCap, n.RequireApproval)
+		n.CooldownS, n.DailyCap, n.RequireApproval, n.CreatedBy)
 	if err != nil {
 		return Rule{}, wrap("create rule", err)
 	}
@@ -271,7 +275,7 @@ func scanRule(row rowScanner) (Rule, error) {
 		cooldownS, dailyCap      int64
 	)
 	err := row.Scan(&r.ID, &r.Name, &r.SourceFilter, &r.CELExpr, &r.ActionKind,
-		&argsJSON, &cooldownS, &dailyCap, &requireApproval, &enabled)
+		&argsJSON, &cooldownS, &dailyCap, &requireApproval, &enabled, &r.CreatedBy)
 	if err != nil {
 		return Rule{}, err
 	}

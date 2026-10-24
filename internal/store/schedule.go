@@ -50,6 +50,9 @@ type Schedule struct {
 	// LastRun is when the schedule last fired (nil = never). The scheduler
 	// coalesces a catch-up fire off it after downtime.
 	LastRun *time.Time
+	// CreatedBy names who created the schedule, in the job ledger's words;
+	// empty for a row from before it was recorded.
+	CreatedBy string
 }
 
 // NewSchedule describes a schedule to create.
@@ -60,10 +63,11 @@ type NewSchedule struct {
 	Args           ScheduleArgs
 	ConcurrencyKey string
 	JitterS        int
+	CreatedBy      string
 }
 
 const scheduleColumns = `id, name, cron_expr, kind, args_json, concurrency_key,
-	jitter_s, enabled, last_job_id, next_at, last_run`
+	jitter_s, enabled, last_job_id, next_at, last_run, created_by`
 
 // CreateSchedule inserts an enabled schedule. Names are unique.
 func (s *Store) CreateSchedule(ctx context.Context, n NewSchedule) (Schedule, error) {
@@ -76,9 +80,9 @@ func (s *Store) CreateSchedule(ctx context.Context, n NewSchedule) (Schedule, er
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO schedule (name, cron_expr, kind, args_json, concurrency_key, jitter_s, enabled)
-		VALUES (?, ?, ?, ?, ?, ?, 1)`,
-		n.Name, n.CronExpr, n.Kind, string(args), n.ConcurrencyKey, n.JitterS)
+		INSERT INTO schedule (name, cron_expr, kind, args_json, concurrency_key, jitter_s, enabled, created_by)
+		VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+		n.Name, n.CronExpr, n.Kind, string(args), n.ConcurrencyKey, n.JitterS, n.CreatedBy)
 	if err != nil {
 		return Schedule{}, wrap("create schedule", err)
 	}
@@ -258,7 +262,7 @@ func scanSchedule(row rowScanner) (Schedule, error) {
 		lastRun   sql.NullInt64
 	)
 	err := row.Scan(&sc.ID, &sc.Name, &sc.CronExpr, &sc.Kind, &argsJSON, &sc.ConcurrencyKey,
-		&jitterS, &enabled, &lastJobID, &nextAt, &lastRun)
+		&jitterS, &enabled, &lastJobID, &nextAt, &lastRun, &sc.CreatedBy)
 	if err != nil {
 		return Schedule{}, err
 	}

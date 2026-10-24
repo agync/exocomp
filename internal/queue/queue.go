@@ -551,6 +551,9 @@ func relativizeToken(tok, dir string) string {
 	return rel
 }
 
+// shellUnsandboxedMsg is the execution-time ledger line of a shell-kind job.
+const shellUnsandboxedMsg = "running UNSANDBOXED (shell): no kernel sandbox for this job"
+
 func (q *Queue) execute(ctx context.Context, job store.Job) {
 	var sink executor.EventSink = newStoreSink(q.store, job.ID, q.log)
 	if q.wrapSink != nil {
@@ -567,6 +570,14 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 		sink.Emit(executor.Event{
 			Level: executor.LevelSystem,
 			Msg:   "running UNSANDBOXED (privileged): no kernel sandbox for this job",
+		})
+	} else if job.Kind == store.ScheduleShell {
+		// A shell job (a shell schedule's or rule's argv) runs through the
+		// plain shell driver as the daemon's user, with no kernel sandbox at
+		// any tier; the ledger says so as it does for a privileged job.
+		sink.Emit(executor.Event{
+			Level: executor.LevelSystem,
+			Msg:   shellUnsandboxedMsg,
 		})
 	}
 

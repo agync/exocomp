@@ -466,6 +466,9 @@ type ScheduleView struct {
 	Enabled        bool    `json:"enabled"`
 	LastJobID      *int64  `json:"last_job_id,omitempty"`
 	NextAt         *string `json:"next_at,omitempty"`
+	// CreatedBy names who created the schedule ("token ci via api"); empty
+	// for a schedule from before it was recorded.
+	CreatedBy string `json:"created_by,omitempty"`
 }
 
 // NewScheduleList projects schedules in store order.
@@ -475,7 +478,7 @@ func NewScheduleList(rows []store.Schedule) []ScheduleView {
 		out = append(out, ScheduleView{
 			ID: s.ID, Name: s.Name, Cron: s.CronExpr, Kind: s.Kind, Source: s.Args.Source,
 			ConcurrencyKey: s.ConcurrencyKey, JitterS: s.JitterS, Enabled: s.Enabled,
-			LastJobID: s.LastJobID, NextAt: rfc3339p(s.NextAt),
+			LastJobID: s.LastJobID, NextAt: rfc3339p(s.NextAt), CreatedBy: s.CreatedBy,
 		})
 	}
 	return out
@@ -494,6 +497,11 @@ type RuleView struct {
 	DailyCap        int    `json:"daily_cap,omitempty"`
 	RequireApproval bool   `json:"require_approval,omitempty"`
 	Enabled         bool   `json:"enabled"`
+	// Workspace is a tofu action's target, an identifier like Source. A shell
+	// action's argv stays out: it is operator config that may carry a value,
+	// and this view is read at the readonly floor. Additive and omitempty, so
+	// the pinned schema_version does not move.
+	Workspace string `json:"workspace,omitempty"`
 	// Source names the playbook action's registered source (json "source" to
 	// match RuleAction; a rule's event-source filter is "source_filter" above).
 	Source   string   `json:"source,omitempty"`
@@ -505,6 +513,8 @@ type RuleView struct {
 	// Timeout is the action's job kill-switch, as the Go duration string the
 	// CLI accepts, so a consumer can audit which rules carry a bound.
 	Timeout string `json:"timeout,omitempty"`
+	// CreatedBy names who created the rule, as on ScheduleView.
+	CreatedBy string `json:"created_by,omitempty"`
 }
 
 // NewRuleList projects rules in store order.
@@ -515,8 +525,9 @@ func NewRuleList(rows []store.Rule) []RuleView {
 			ID: r.ID, Name: r.Name, SourceFilter: r.SourceFilter, CELExpr: r.CELExpr,
 			ActionKind: r.ActionKind, CooldownS: r.CooldownS, DailyCap: r.DailyCap,
 			RequireApproval: r.RequireApproval, Enabled: r.Enabled,
-			Source: r.Action.Source, Playbook: r.Action.Playbook, Limit: r.Action.Limit,
-			Tags: r.Action.Tags, Check: r.Action.Check, Diff: r.Action.Diff,
+			Workspace: r.Action.Workspace, Source: r.Action.Source, Playbook: r.Action.Playbook,
+			Limit: r.Action.Limit, Tags: r.Action.Tags, Check: r.Action.Check, Diff: r.Action.Diff,
+			CreatedBy: r.CreatedBy,
 		}
 		if r.Action.Timeout != 0 {
 			v.Timeout = time.Duration(r.Action.Timeout).String()

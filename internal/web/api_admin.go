@@ -88,8 +88,9 @@ func (s *Server) checkPathSource(row store.Source) error {
 func (s *Server) adminFail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, store.ErrValidation), errors.Is(err, store.ErrInvalidEgressPort),
-		errors.Is(err, service.ErrEmptySecretValue), errors.Is(err, service.ErrInvalidEnvName):
-		s.badRequest(w, err.Error())
+		errors.Is(err, service.ErrEmptySecretValue), errors.Is(err, service.ErrInvalidEnvName),
+		errors.Is(err, service.ErrSourcePathEscape):
+		s.badRequest(w, strings.TrimPrefix(err.Error(), "store: validation: "))
 	default:
 		s.apiFail(w, err)
 	}
