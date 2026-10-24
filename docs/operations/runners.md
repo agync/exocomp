@@ -69,11 +69,11 @@ exocomp ansible --host web -m ping --runner fedora-ee
 ```
 
 Only the caps are read from the named runner — no image is built or referenced. `--runner`
-travels over `--remote` too, for `playbook run` and `workspace plan`/`apply`: the request
-carries the name and the daemon that claims the job resolves and enforces it exactly as a
-local run would (see [design/byo-runner.md](../design/byo-runner.md) §9 Phase 1). `run`
-(the hooked workflow), `run-cli`, `command`, and `ansible` have no `--remote` form at all, so
-`--runner` on those is local-only by construction.
+travels over `--remote` too, for `playbook run`, `workspace plan`/`apply`, `command` and
+`ansible`: the request carries the name and the daemon that claims the job resolves and
+enforces it exactly as a local run would (see [design/byo-runner.md](../design/byo-runner.md)
+§9 Phase 1). `run` (the hooked workflow) and `run-cli` have no `--remote` form, so `--runner`
+on those is local-only by construction.
 
 Enforcement is **opt-in and fail-closed on two independent axes**, and a job that names no
 runner is completely unaffected — this never tightens the default, capless path:

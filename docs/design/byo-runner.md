@@ -324,9 +324,9 @@ A job names a runner purely for its caps via `--runner <name>` (there is no job�
 *image* linkage — the container tier stays deferred, §1). `store.JobArgs`/`queue.Spec` carry
 `RunnerName` as a JSON field on the existing `args_json` column (no migration). `--runner` is
 accepted on `playbook run`, `run` (the hooked workflow), `workspace plan`/`apply`, `run-cli`,
-`command`, and `ansible`; `--remote` carries it for the two verbs with a remote form
-(`workspace plan`/`apply`, `playbook run`), so a remote-submitted job takes the same
-dispatch-time path as a local one.
+`command`, and `ansible`; `--remote` carries it for the verbs with a remote form
+(`workspace plan`/`apply`, `playbook run`, `command`, `ansible`), so a remote-submitted job
+takes the same dispatch-time path as a local one.
 
 At dispatch — the daemon's per-kind drivers and every no-daemon inline path alike —
 `resolveRunnerCaps` looks the named runner up and runs its `memory_max`/`cpu_quota` through

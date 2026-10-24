@@ -31,6 +31,8 @@ var remoteCapable = map[string]bool{
 	"workspace apply":   true,
 	"workspace destroy": true,
 	"playbook run":      true,
+	"ansible":           true,
+	"command":           true,
 }
 
 // remoteExempt lists the commands that run on this machine by nature (the local

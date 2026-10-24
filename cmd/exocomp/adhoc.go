@@ -67,6 +67,9 @@ type adhocSpec struct {
 	// validated and absolutized at the flag parse, so a one-off against a
 	// key-only host does not have to reach for --privileged.
 	sshIdentityFiles []string
+	// sshIdentity are the --ssh-identity values as given. A remote run sends
+	// these: they name files on the daemon, not on this machine.
+	sshIdentity []string
 	// idempotencyKey dedups a retried ad-hoc run to one job. Resolved from the
 	// global flag in runAdhocExit, empty on the unchanged path.
 	idempotencyKey string
@@ -138,6 +141,7 @@ func newAnsibleAdhocCmd() *cobra.Command {
 				privileged:          privileged,
 				timeout:             timeout,
 				sshIdentityFiles:    identityFiles,
+				sshIdentity:         sshIdentity,
 			})
 		},
 	}
@@ -236,6 +240,16 @@ func runAdhocExit(cmd *cobra.Command, spec adhocSpec) error {
 	}
 	spec.outputMode = mode
 	spec.idempotencyKey = idempotencyKey(cmd)
+	rc, remote, err := remoteClient(cmd)
+	if err != nil {
+		if mode == outputJSON {
+			return failJSON(cmd, err)
+		}
+		return err
+	}
+	if remote {
+		return exitWith(runRemoteAdhoc(cmd, rc, spec))
+	}
 	if spec.privileged {
 		warnPrivileged(cmd.ErrOrStderr())
 	}
@@ -355,18 +369,10 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		if err == nil {
 			lines = make([]string, 0, len(events))
 			for _, e := range events {
-				if e.Level == store.LevelSystem {
-					continue
-				}
-				lines = append(lines, e.Msg)
+				lines = appendOutputLine(lines, e.Level, e.Msg)
 			}
 		}
-		hosts := executor.ParseAnsibleAdhocOutput(lines)
-		exitCode := 0
-		if final.ExitCode != nil {
-			exitCode = *final.ExitCode
-		}
-		view := wire.NewCommandResultView(final.ID, string(final.State), exitCode, hosts)
+		view := commandResultView(final.ID, string(final.State), final.ExitCode, lines)
 		if err := wire.WriteSuccess(out, wire.KindCommandResult, view); err != nil {
 			return 0, err
 		}
@@ -468,4 +474,23 @@ func isLocalHostAdhoc(pattern, inventory string) bool {
 		return true
 	}
 	return (p == "localhost" || p == "127.0.0.1" || p == "::1") && (inv == "" || inv == "localhost," || inv == "127.0.0.1,")
+}
+
+// appendOutputLine keeps a job event's text for the per-host parse unless it is
+// the queue's own system line.
+func appendOutputLine(lines []string, level, msg string) []string {
+	if level == store.LevelSystem {
+		return lines
+	}
+	return append(lines, msg)
+}
+
+// commandResultView is the command.result document an ad-hoc run prints under
+// --output json, local or remote: the job and its output parsed per host.
+func commandResultView(jobID int64, state string, exitCode *int, lines []string) wire.CommandResultView {
+	code := 0
+	if exitCode != nil {
+		code = *exitCode
+	}
+	return wire.NewCommandResultView(jobID, state, code, executor.ParseAnsibleAdhocOutput(lines))
 }

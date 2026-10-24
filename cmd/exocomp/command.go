@@ -107,6 +107,7 @@ func newCommandCmd() *cobra.Command {
 				privileged:          privileged,
 				timeout:             timeout,
 				sshIdentityFiles:    identityFiles,
+				sshIdentity:         sshIdentity,
 			})
 		},
 	}
