@@ -48,9 +48,10 @@ type Enqueuer interface {
 // their cron expression. Every fire goes through Enqueue, the same path a
 // keypress or a webhook rule uses — there is no side door here.
 type Scheduler struct {
-	store *store.Store
-	queue Enqueuer
-	log   *slog.Logger
+	store   *store.Store
+	queue   Enqueuer
+	log     *slog.Logger
+	resolve SourceResolver
 
 	mu      sync.Mutex
 	cron    *cron.Cron
@@ -70,12 +71,25 @@ type Scheduler struct {
 	paused bool
 }
 
+// Option configures a Scheduler.
+type Option func(*Scheduler)
+
+// WithSourceResolver lets a play schedule that names a source run from its
+// checkout. Without it such a schedule fails closed at fire time.
+func WithSourceResolver(r SourceResolver) Option {
+	return func(s *Scheduler) { s.resolve = r }
+}
+
 // New returns a Scheduler over st and q. log defaults to slog.Default().
-func New(st *store.Store, q Enqueuer, log *slog.Logger) *Scheduler {
+func New(st *store.Store, q Enqueuer, log *slog.Logger, opts ...Option) *Scheduler {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Scheduler{store: st, queue: q, log: log, entries: map[int64]cron.EntryID{}}
+	s := &Scheduler{store: st, queue: q, log: log, entries: map[int64]cron.EntryID{}}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // Start loads every enabled schedule and registers it with a cron instance
@@ -442,7 +456,7 @@ func (s *Scheduler) nextFireTime(scheduleID int64) *time.Time {
 // buildSpecs is the scheduler-bound wrapper over Specs: a fire has no separate
 // trigger from the schedule itself, so it passes Trigger.
 func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.Spec, error) {
-	return Specs(ctx, s.store, s.log, sc, Trigger)
+	return Specs(ctx, s.store, s.log, sc, Trigger, s.resolve)
 }
 
 // Specs builds the queue specs one schedule's kind produces, independent of
@@ -451,8 +465,10 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 // passes its own. It does NOT stamp last_run or attach an occurrence
 // idempotency key — that is dispatch's job for a real fire. A backup schedule
 // with an empty target fans out to every enabled target, each getting its own
-// job and its own "backup:<target>" concurrency key.
-func Specs(ctx context.Context, st *store.Store, log *slog.Logger, sc store.Schedule, trigger string) ([]queue.Spec, error) {
+// job and its own "backup:<target>" concurrency key. resolve serves a play
+// schedule that names a source (see SourceResolver); other kinds never use it.
+func Specs(ctx context.Context, st *store.Store, log *slog.Logger, sc store.Schedule, trigger string,
+	resolve SourceResolver) ([]queue.Spec, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -485,7 +501,7 @@ func Specs(ctx context.Context, st *store.Store, log *slog.Logger, sc store.Sche
 		return []queue.Spec{reactive.PlanSpec(ws, trigger)}, nil
 
 	case KindPlay:
-		spec, err := playSpec(ctx, st, log, sc, trigger)
+		spec, err := playSpec(ctx, st, log, sc, trigger, resolve)
 		if err != nil {
 			return nil, err
 		}

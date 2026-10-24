@@ -16,6 +16,8 @@ import (
 // shape mirrors `exocomp schedule add` (cmd/exocomp/schedule.go): kind decides
 // which of argv/target/check/tolerate-unreachable apply, and CreateSchedule's
 // own unique-name and ValidateCron checks are the same ones the CLI relies on.
+// The one exception is --source: a play schedule that runs from a source is set
+// from the CLI only; this form never writes one.
 
 func init() { registerWrite((*Server).registerScheduleWrite) }
 
@@ -247,7 +249,7 @@ func (s *Server) handleScheduleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	specs, err := sched.Specs(r.Context(), s.store, s.log, sc, "operator")
+	specs, err := sched.Specs(r.Context(), s.store, s.log, sc, "operator", s.service().ResolvePlainSourcePlay)
 	if err != nil {
 		s.log.Error("web: schedule run specs failed", "schedule", name, "err", err.Error(), "by", ident.token.Name)
 		s.scheduleRowRefusal(w, r, name, "Could not run schedule: "+err.Error())

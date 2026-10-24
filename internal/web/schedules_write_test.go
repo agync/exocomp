@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -673,5 +676,72 @@ func TestScheduleRunEnqueuesAndRedirects(t *testing.T) {
 	}
 	if !matched {
 		t.Error("enqueued job not found in store")
+	}
+}
+
+// TestScheduleRunFromSourceInheritsItsDefaults: Run now on a play schedule that
+// names a source builds the same spec a fire does, so the job runs from the
+// source's checkout and carries its default egress. A schedule whose source has
+// gone is refused on its row rather than run without the defaults.
+func TestScheduleRunFromSourceInheritsItsDefaults(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	invPath := filepath.Join(t.TempDir(), "edge.json")
+	if err := os.WriteFile(invPath, []byte(`{"all":{"hosts":{"edge1":{"ansible_host":"10.0.0.1"}}}}`), 0o600); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+	if _, err := h.store.MaterializeInventory(ctx, "tf:edge", invPath); err != nil {
+		t.Fatalf("materialize inventory: %v", err)
+	}
+	checkout := t.TempDir()
+	src, err := h.store.CreateSource(ctx, store.Source{Name: "infra", Kind: store.SourcePath, URI: checkout, Enabled: true})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	if _, err := h.store.SetSourceEgressPorts(ctx, src.ID, []int{443}); err != nil {
+		t.Fatalf("set egress: %v", err)
+	}
+	for _, name := range []string{"converge", "orphan"} {
+		source := "infra"
+		if name == "orphan" {
+			source = "gone"
+		}
+		if _, err := h.store.CreateSchedule(ctx, store.NewSchedule{
+			Name: name, CronExpr: "@every 6h", Kind: "play",
+			Args: store.ScheduleArgs{Argv: []string{"site.yml"}, Target: "tf:edge", Source: source},
+		}); err != nil {
+			t.Fatalf("seed schedule %s: %v", name, err)
+		}
+	}
+
+	resp := postForm(t, client, ts.URL+"/schedules/converge/run", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("run converge = %d, want 303", resp.StatusCode)
+	}
+	id, err := strconv.ParseInt(strings.TrimPrefix(resp.Header.Get("Location"), "/jobs/"), 10, 64)
+	if err != nil {
+		t.Fatalf("Location %q is not a job: %v", resp.Header.Get("Location"), err)
+	}
+	job, err := h.store.GetJob(ctx, id)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if job.Args.Source != "infra" || job.Args.Dir != checkout {
+		t.Errorf("job source/dir = %q/%q, want infra and %q", job.Args.Source, job.Args.Dir, checkout)
+	}
+	if len(job.Args.EgressPorts) != 1 || job.Args.EgressPorts[0] != 443 {
+		t.Errorf("job egress = %v, want the source default [443]", job.Args.EgressPorts)
+	}
+
+	resp = postForm(t, client, ts.URL+"/schedules/orphan/run", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("run orphan = %d, want 422 for a schedule whose source is gone", resp.StatusCode)
 	}
 }
