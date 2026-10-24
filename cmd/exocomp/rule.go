@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -137,7 +136,7 @@ func newRuleAddCmd() *cobra.Command {
 				}
 			default:
 				return fmt.Errorf("rule add: --action must be one of %s",
-					strings.Join(actionKinds(), ", "))
+					strings.Join(service.RuleActionKinds(), ", "))
 			}
 			if cooldown < 0 {
 				return errors.New("rule add: --cooldown cannot be negative")
@@ -147,23 +146,7 @@ func newRuleAddCmd() *cobra.Command {
 			}
 			ruleAction.Timeout = store.Duration(timeout)
 
-			if _, err := reactive.Compile(expr); err != nil {
-				return fmt.Errorf("rule add: %w", err)
-			}
-
-			st, err := openStore()
-			if err != nil {
-				return err
-			}
-			defer func() { _ = st.Close() }()
-
-			if action == store.ActionPlaybook {
-				if err := validatePlaybookRule(cmd.Context(), st, repoSource, playbook, limit, tags, check, diff); err != nil {
-					return err
-				}
-			}
-
-			created, err := st.CreateRule(cmd.Context(), store.NewRule{
+			nr := store.NewRule{
 				Name:            name,
 				SourceFilter:    source,
 				CELExpr:         expr,
@@ -172,26 +155,38 @@ func newRuleAddCmd() *cobra.Command {
 				CooldownS:       int(cooldown / time.Second),
 				DailyCap:        dailyCap,
 				RequireApproval: requireApproval,
-			})
+			}
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteRuleAdd(cmd, rc, nr, sshIdentity)
+			}
+
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+			dir, err := dataDir()
+			if err != nil {
+				return fmt.Errorf("rule add: resolve data dir: %w", err)
+			}
+			// The expression is compiled against the engine's environment and a
+			// playbook action resolved in its checkout, so a rule that would never
+			// run is refused here rather than logged on every event.
+			created, err := service.New(st, dir, nil).CreateRule(cmd.Context(), nr, service.Actor{})
 			if err != nil {
 				if errors.Is(err, store.ErrDuplicate) {
 					return fmt.Errorf("rule add: %q already exists", name)
 				}
-				return err
+				return fmt.Errorf("rule add: %w", validationError(err))
 			}
-
-			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "rule %s (%s) added\n", created.Name, created.ActionKind)
-			if reactive.Destructive(created.ActionKind) && !created.RequireApproval {
-				_, _ = fmt.Fprintf(out,
-					"note: %s is destructive, so every match is approval-gated regardless\n",
-					created.ActionKind)
-			}
+			printRuleAdded(cmd, created.Name, created.ActionKind, created.RequireApproval)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&expr, "expr", "", "CEL expression over `event` (required)")
-	cmd.Flags().StringVar(&action, "action", "", strings.Join(actionKinds(), "|"))
+	cmd.Flags().StringVar(&action, "action", "", strings.Join(service.RuleActionKinds(), "|"))
 	cmd.Flags().StringVar(&source, "source", "",
 		"only evaluate events from this source (empty: every source)")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "tofu actions: the workspace to act on")
@@ -221,44 +216,14 @@ func newRuleAddCmd() *cobra.Command {
 	return cmd
 }
 
-func actionKinds() []string {
-	return []string{store.ActionShell, store.ActionTofuPlan, store.ActionTofuApply,
-		store.ActionPlaybook, store.ActionNotify}
-}
-
-// validatePlaybookRule refuses a playbook-action rule that would never run: the
-// source must exist with a checkout on disk, the playbook path must be relative
-// and confined to that checkout, the source must not be hooked (a rule playbook
-// is a plain run — the override-wins resolution covers both the checkout's own
-// .exocomp/hooks.yml and the data-dir override), and the limit/tags must be
-// shape-valid for ansible. All of it re-validated by the builder when the rule
-// fires; refusing here keeps a rule that can never fire out of `rule list`.
-func validatePlaybookRule(ctx context.Context, st *store.Store, repoSource, playbook, limit, tags string, check, diff bool) error {
-	dir, err := dataDir()
-	if err != nil {
-		return fmt.Errorf("rule add: resolve data dir: %w", err)
+// printRuleAdded confirms a new rule, and says when its action is gated
+// whatever was asked.
+func printRuleAdded(cmd *cobra.Command, name, actionKind string, requireApproval bool) {
+	out := cmd.OutOrStdout()
+	_, _ = fmt.Fprintf(out, "rule %s (%s) added\n", name, actionKind)
+	if reactive.Destructive(actionKind) && !requireApproval {
+		_, _ = fmt.Fprintf(out, "note: %s is destructive, so every match is approval-gated regardless\n", actionKind)
 	}
-	hooked, _, err := service.New(st, dir, nil).ResolveSourcePlaybook(ctx,
-		hooksOverridePath(dir, repoSource), repoSource, playbook)
-	if err != nil {
-		return fmt.Errorf("rule add: %w", err)
-	}
-	if hooked {
-		return fmt.Errorf("rule add: source %q has hooks; a rule playbook is a plain run", repoSource)
-	}
-	if strings.Contains(limit, "{{host}}") {
-		// Host templates resolve at request time; validate the rest of the
-		// ansible arguments now by substituting a placeholder host.
-		checkLimit := strings.ReplaceAll(limit, "{{host}}", "host")
-		if _, _, err := service.AnsiblePassthrough(checkLimit, tags, "", check, diff, nil); err != nil {
-			return fmt.Errorf("rule add: %w", err)
-		}
-		return nil
-	}
-	if _, _, err := service.AnsiblePassthrough(limit, tags, "", check, diff, nil); err != nil {
-		return fmt.Errorf("rule add: %w", err)
-	}
-	return nil
 }
 
 func newRuleListCmd() *cobra.Command {
@@ -272,28 +237,43 @@ func newRuleListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := openStore()
-			if err != nil {
+			// The text list renders from store rows locally, so a shell action
+			// shows its argv; a remote's view carries no argv and shows the kind.
+			var views []wire.RuleView
+			var rules []store.Rule
+			if rc, ok, err := remoteClient(cmd); err != nil {
 				return err
-			}
-			defer func() { _ = st.Close() }()
-
-			rows, err := st.ListRules(cmd.Context(), false)
-			if err != nil {
-				return err
+			} else if ok {
+				if views, err = rc.ListRules(cmd.Context()); err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+				for _, v := range views {
+					rules = append(rules, ruleOfView(v))
+				}
+			} else {
+				st, err := openStore()
+				if err != nil {
+					return err
+				}
+				defer func() { _ = st.Close() }()
+				rows, err := st.ListRules(cmd.Context(), false)
+				if err != nil {
+					return err
+				}
+				views, rules = wire.NewRuleList(rows), rows
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindRuleList, wire.NewRuleList(rows))
+				return emitJSON(cmd, wire.KindRuleList, views)
 			}
 			out := cmd.OutOrStdout()
-			if len(rows) == 0 {
+			if len(rules) == 0 {
 				_, _ = fmt.Fprintln(out, "no rules")
 				return nil
 			}
 
 			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintln(w, "NAME\tSTATE\tSOURCE\tACTION\tCOOLDOWN\tCAP\tAPPROVAL\tEXPR")
-			for _, r := range rows {
+			for _, r := range rules {
 				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 					r.Name, enabledLabel(r.Enabled), reactive.SourceLabel(r.SourceFilter),
 					reactive.ActionLabel(r), reactive.CooldownLabel(r.CooldownS),
@@ -301,6 +281,17 @@ func newRuleListCmd() *cobra.Command {
 			}
 			return w.Flush()
 		},
+	}
+}
+
+// ruleOfView rebuilds the parts of a rule the list labels read, so a remote
+// list prints through the same reactive labels as a local one. The view has no
+// shell argv, so a remote shell action shows its kind alone.
+func ruleOfView(v wire.RuleView) store.Rule {
+	return store.Rule{
+		Name: v.Name, SourceFilter: v.SourceFilter, CELExpr: v.CELExpr, ActionKind: v.ActionKind,
+		CooldownS: v.CooldownS, DailyCap: v.DailyCap, RequireApproval: v.RequireApproval, Enabled: v.Enabled,
+		Action: store.RuleAction{Workspace: v.Workspace, Source: v.Source, Playbook: v.Playbook, Limit: v.Limit},
 	}
 }
 
@@ -330,6 +321,11 @@ func newRuleDisableCmd() *cobra.Command {
 }
 
 func setRuleEnabled(cmd *cobra.Command, name string, enabled bool) error {
+	if rc, ok, err := remoteClient(cmd); err != nil {
+		return err
+	} else if ok {
+		return runRemoteRuleSetEnabled(cmd, rc, name, enabled)
+	}
 	st, err := openStore()
 	if err != nil {
 		return err
@@ -352,6 +348,11 @@ func newRuleRmCmd() *cobra.Command {
 		Short: "Remove a rule and its fire ledger",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteRuleRm(cmd, rc, args[0])
+			}
 			st, err := openStore()
 			if err != nil {
 				return err

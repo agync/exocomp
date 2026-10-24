@@ -144,13 +144,18 @@ func newScheduleAddCmd() *cobra.Command {
 				return fmt.Errorf("schedule add: --kind must be %s, %s, %s or %s",
 					store.ScheduleShell, store.ScheduleBackup, sched.KindPlay, store.ScheduleDrill)
 			}
-			if jitter < 0 {
-				return errors.New("schedule add: --jitter cannot be negative")
+			ns := store.NewSchedule{
+				Name:           name,
+				CronExpr:       cronExpr,
+				Kind:           kind,
+				Args:           scheduleArgs,
+				ConcurrencyKey: concurrencyKey,
+				JitterS:        jitter,
 			}
-			// The same parser the scheduler registers with, so a row that
-			// cannot fire is refused here rather than logged on every boot.
-			if err := sched.ValidateCron(cronExpr); err != nil {
-				return fmt.Errorf("schedule add: %w", err)
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteScheduleAdd(cmd, rc, ns)
 			}
 
 			st, err := openStore()
@@ -158,39 +163,25 @@ func newScheduleAddCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = st.Close() }()
-
-			if sourceName != "" {
-				// The resolution a fire runs, so a schedule that could never fire
-				// (no such source, a hooked one, a playbook that is absolute or
-				// escapes the checkout) is refused now rather than logged at
-				// every fire, as `rule add` does for a playbook rule.
-				dir, err := dataDir()
-				if err != nil {
-					return fmt.Errorf("schedule add: resolve data dir: %w", err)
-				}
-				if _, _, _, err := service.New(st, dir, nil).ResolvePlainSourcePlay(
-					cmd.Context(), sourceName, scheduleArgs.Argv[0]); err != nil {
-					return fmt.Errorf("schedule add: %w", err)
-				}
+			dir, err := dataDir()
+			if err != nil {
+				return fmt.Errorf("schedule add: resolve data dir: %w", err)
 			}
-
-			created, err := st.CreateSchedule(cmd.Context(), store.NewSchedule{
-				Name:           name,
-				CronExpr:       cronExpr,
-				Kind:           kind,
-				Args:           scheduleArgs,
-				ConcurrencyKey: concurrencyKey,
-				JitterS:        jitter,
-			})
+			// The checks a fire would hit (the cron, the kind's fields, a source
+			// play that resolves) run here, so a schedule that could never fire is
+			// refused now rather than logged at every fire.
+			if err := sched.CheckNewSchedule(ns); err != nil {
+				return fmt.Errorf("schedule add: %w", validationError(err))
+			}
+			created, err := service.New(st, dir, nil).CreateSchedule(cmd.Context(), ns, service.Actor{})
 			if err != nil {
 				if errors.Is(err, store.ErrDuplicate) {
 					return fmt.Errorf("schedule add: %q already exists", name)
 				}
-				return validationError(err)
+				return fmt.Errorf("schedule add: %w", validationError(err))
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "schedule %s (%s) added: %s\n",
-				created.Name, created.Kind, created.CronExpr)
-			return err
+			printScheduleAdded(cmd, created.Name, created.Kind, created.CronExpr)
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&cronExpr, "cron", "",
@@ -207,6 +198,11 @@ func newScheduleAddCmd() *cobra.Command {
 	return cmd
 }
 
+// printScheduleAdded confirms a new schedule.
+func printScheduleAdded(cmd *cobra.Command, name, kind, cron string) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "schedule %s (%s) added: %s\n", name, kind, cron)
+}
+
 func newScheduleListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "list",
@@ -218,26 +214,35 @@ func newScheduleListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := openStore()
-			if err != nil {
+			var views []wire.ScheduleView
+			if rc, ok, err := remoteClient(cmd); err != nil {
 				return err
-			}
-			defer func() { _ = st.Close() }()
-
-			rows, err := st.ListSchedules(cmd.Context(), false)
-			if err != nil {
-				return err
+			} else if ok {
+				if views, err = rc.ListSchedules(cmd.Context()); err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+			} else {
+				st, err := openStore()
+				if err != nil {
+					return err
+				}
+				defer func() { _ = st.Close() }()
+				rows, err := st.ListSchedules(cmd.Context(), false)
+				if err != nil {
+					return err
+				}
+				views = wire.NewScheduleList(rows)
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindScheduleList, wire.NewScheduleList(rows))
+				return emitJSON(cmd, wire.KindScheduleList, views)
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintln(w, "NAME\tCRON\tKIND\tSTATE\tLAST JOB\tNEXT AT")
-			for _, s := range rows {
+			for _, s := range views {
 				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					s.Name, s.CronExpr, s.Kind, enabledLabel(s.Enabled),
-					lastJobIDLabel(s.LastJobID), nextAtLabel(s.NextAt))
+					s.Name, s.Cron, s.Kind, enabledLabel(s.Enabled),
+					lastJobIDLabel(s.LastJobID), nextAtLabel(parseWireTime(s.NextAt)))
 			}
 			return w.Flush()
 		},
@@ -250,6 +255,11 @@ func newScheduleRmCmd() *cobra.Command {
 		Short: "Remove a schedule",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteScheduleRm(cmd, rc, args[0])
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -294,6 +304,11 @@ func newScheduleDisableCmd() *cobra.Command {
 // registrations in memory, so the change lands there on the next reload —
 // which is why the confirmation says how to make that happen now.
 func setScheduleEnabled(cmd *cobra.Command, name string, enabled bool) error {
+	if rc, ok, err := remoteClient(cmd); err != nil {
+		return err
+	} else if ok {
+		return runRemoteScheduleSetEnabled(cmd, rc, name, enabled)
+	}
 	st, err := openStore()
 	if err != nil {
 		return err
