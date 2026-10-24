@@ -65,9 +65,10 @@ exocomp command --host 'web*' --output json -- hostname -f
 
 The command module runs no shell, so a pipe is an explicit `--shell`, never an
 accident. Local execution without an explicit `--source` resolves relative to the
-operator's home directory. Privilege escalation on a **local** target with `--become`
-is refused up front and requires `--privileged` (unsandboxed execution); targeting the
-host over SSH instead runs the escalation on the far side, outside the sandbox.
+operator's home directory. `--become` works the same on every target, the daemon's own host
+included, and needs no other flag. On a local connection under the sandbox the escalation's
+`sudo` runs inside it and is refused ([playbook run](playbook-run.md)), while a target reached
+over SSH, the daemon's host included, escalates on the far side.
 
 ## `exocomp ansible` — any module
 

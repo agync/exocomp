@@ -47,6 +47,11 @@ threat's section.
 - **Scoped token vs. its scope.** A delegated agent or script holds a bearer token scoped to
   specific verbs. The boundary is that a token cannot exceed its scope — most sharply, that
   the scope which enqueues a gated apply cannot also settle the gate.
+- **The operator is trusted.** exocomp serves one operator. An `operator`-scope token is
+  trusted to run arbitrary commands as the daemon's user, on the daemon's host and on every
+  host its runs reach, with `--become` wherever that user may escalate. In the rootless
+  container (`UserNS=keep-id`) root is the same uid as the exocomp user, which already owns
+  every secret and setting. Multi-tenant use and a hostile operator are out of scope.
 - **External trust.** Forge SSH host keys, git allowed-signers, and (optionally) an OpenBao
   Transit key sit outside the box; each is trusted only under an explicit, verifiable pin.
 
@@ -62,8 +67,8 @@ threat's section.
 - A delegated token-holder trying to exceed its scope: self-approving a gated job, applying
   across workspaces, or re-pinning a login to an endpoint of its choosing.
 
-Out of scope: root on the running host; side-channel timing attacks against opaque 128-bit
-token ids (see T27).
+Out of scope: root on the running host; an operator-scope token holder acting against the
+operator; side-channel timing attacks against opaque 128-bit token ids (see T27).
 
 ## Envelope
 

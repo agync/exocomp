@@ -204,23 +204,6 @@ func TestCommandAnsibleFlagEmpathy(t *testing.T) {
 	}
 }
 
-// TestCommandLocalBecomeRequiresPrivileged proves that requesting privilege
-// escalation (--become) on a local host without --privileged is refused early.
-func TestCommandLocalBecomeRequiresPrivileged(t *testing.T) {
-	useDataDir(t, t.TempDir())
-	var out, warn bytes.Buffer
-	_, err := runAdhoc(context.Background(), &out, &warn, adhocSpec{
-		runbook: "command", pattern: "localhost", module: "command", args: "whoami",
-		become: true, privileged: false,
-	})
-	if err == nil {
-		t.Fatal("expected error for local become without --privileged, got nil")
-	}
-	if !strings.Contains(err.Error(), "local privilege escalation with --become requires --privileged") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 // TestCommandDefaultWorkingDirHome proves that ad-hoc commands without an explicit
 // --source resolve their working directory to the user's home directory.
 func TestCommandDefaultWorkingDirHome(t *testing.T) {
