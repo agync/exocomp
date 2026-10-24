@@ -24,6 +24,7 @@ import (
 type testDaemon struct {
 	dir      string
 	st       *store.Store
+	env      *secrets.Envelope
 	endpoint string
 	fp       string
 
@@ -61,6 +62,7 @@ func startTestDaemon(t *testing.T) *testDaemon {
 	if err != nil {
 		t.Fatalf("secrets.Init: %v", err)
 	}
+	d.env = env
 	t.Cleanup(func() { _ = env.Close() })
 	d.st, err = openStoreAt(d.dir)
 	if err != nil {
