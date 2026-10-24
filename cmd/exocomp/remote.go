@@ -15,8 +15,8 @@ import (
 	"exocomp.dev/exocomp/internal/wire"
 )
 
-// This file is the client-mode seam. When a remote is selected (--remote flag or
-// EXOCOMP_REMOTE env; a bare command with neither stays LOCAL), a read verb's
+// This file is the client-mode seam. When a remote is selected (--remote,
+// EXOCOMP_REMOTE, or the hosts.toml default; --local opts out), a read verb's
 // RunE short-circuits into remoteClient and renders the daemon's wire projection
 // instead of touching a local data dir. --output json re-emits the decoded view
 // through wire.WriteSuccess, so remote bytes equal local bytes; text is rendered
@@ -24,21 +24,22 @@ import (
 // on the remote daemon and follow the job — lives in remotewrite.go.
 
 // remoteClient resolves the selected remote into a configured, pinned client.
-// The bool is false in LOCAL mode (no --remote, no EXOCOMP_REMOTE) — the caller
-// then runs its normal local path unchanged. An error means a remote WAS asked
-// for but could not be resolved (no default, not pinned, no token): the command
-// fails rather than silently falling back to local, which would run an operator's
-// intended-remote read against the wrong box.
+// The bool is false in LOCAL mode (--local, or no remote configured at all) —
+// the caller then runs its normal local path unchanged. An error means a remote
+// WAS selected but could not be resolved (no default, not pinned, no token): the
+// command fails rather than silently falling back to local, which would run an
+// operator's intended-remote command against the wrong box.
 func remoteClient(cmd *cobra.Command) (*client.Client, bool, error) {
-	selector, active := selectedRemote(cmd)
-	if !active {
-		return nil, false, nil
+	sel, err := selectRemote(cmd)
+	if err != nil || !sel.active {
+		return nil, false, err
 	}
 	cfg, err := loadHostsConfig()
 	if err != nil {
 		return nil, false, err
 	}
 
+	selector := sel.selector
 	// An empty selector (`--remote=`) means the hosts.toml default.
 	if selector == "" {
 		if cfg.Default == "" {
@@ -56,7 +57,8 @@ func remoteClient(cmd *cobra.Command) (*client.Client, bool, error) {
 			entry = e
 		} else {
 			return nil, false, fmt.Errorf(
-				"remote %q is not pinned; run `exocomp login %s` first", selector, selector)
+				"remote %q is not pinned; run `exocomp login %s` first, or pass --local to run on this machine",
+				selector, selector)
 		}
 	}
 
@@ -68,32 +70,47 @@ func remoteClient(cmd *cobra.Command) (*client.Client, bool, error) {
 	return c, true, nil
 }
 
-// noteLocalRun tells the operator that a job is about to run on this machine
-// although hosts.toml names a default remote. A bare command never uses that
-// default, so without the line a run meant for the daemon executes here with no
-// sign of it. An unreadable hosts.toml prints nothing: the run does not need it.
-func noteLocalRun(cmd *cobra.Command) {
-	cfg, err := loadHostsConfig()
-	if err != nil || cfg.Default == "" {
-		return
-	}
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-		"running on this machine, not on the default remote %q (pass --remote= to run there)\n",
-		cfg.Default)
+// remoteSelection is where one invocation's command goes.
+type remoteSelection struct {
+	// active is true when the command goes to a remote daemon.
+	active bool
+	// selector is the alias or endpoint; empty with active means the hosts.toml
+	// default (`--remote=`).
+	selector string
+	// fromDefault is true when the hosts.toml default chose the remote, with no
+	// flag or environment naming one.
+	fromDefault bool
 }
 
-// selectedRemote returns the remote selector and whether remote mode is active.
-// Precedence: --remote flag, then EXOCOMP_REMOTE. The hosts.toml default is NOT
-// consulted here — it only fills a valueless --remote, downstream — so a bare
-// command with neither flag nor env stays local even when a default is stored.
-func selectedRemote(cmd *cobra.Command) (string, bool) {
+// selectRemote decides whether a command goes to a remote daemon. Precedence:
+// --local (this machine), then --remote, then EXOCOMP_REMOTE, then the hosts.toml
+// default. With none of them the command is local. A hosts.toml that cannot be
+// read is an error, not a silent local run: it may name a default.
+func selectRemote(cmd *cobra.Command) (remoteSelection, error) {
+	local := false
+	if f := cmd.Flags().Lookup(localFlag); f != nil && f.Changed {
+		local = f.Value.String() == "true"
+	}
 	if f := cmd.Flags().Lookup(remoteFlag); f != nil && f.Changed {
-		return f.Value.String(), true
+		if local {
+			return remoteSelection{}, errors.New("pass --local or --remote, not both")
+		}
+		return remoteSelection{active: true, selector: f.Value.String()}, nil
+	}
+	if local {
+		return remoteSelection{}, nil
 	}
 	if env := strings.TrimSpace(os.Getenv(remoteEnv)); env != "" {
-		return env, true
+		return remoteSelection{active: true, selector: env}, nil
 	}
-	return "", false
+	cfg, err := loadHostsConfig()
+	if err != nil {
+		return remoteSelection{}, fmt.Errorf("%w; pass --local to run on this machine", err)
+	}
+	if cfg.Default != "" {
+		return remoteSelection{active: true, selector: cfg.Default, fromDefault: true}, nil
+	}
+	return remoteSelection{}, nil
 }
 
 func cleanEndpoint(s string) string {

@@ -100,60 +100,31 @@ func TestRemoteViaEnv(t *testing.T) {
 	}
 }
 
-// A bare command with NO --remote and NO env stays LOCAL: it opens the local data
-// dir (here an empty temp one) and reports no jobs, never touching the pinned
-// remote.
-func TestBareCommandStaysLocal(t *testing.T) {
+// --local keeps a command on this machine although hosts.toml names a default
+// remote: it opens the local data dir (here an empty temp one) and never
+// contacts the remote.
+func TestLocalNeverContactsTheDefaultRemote(t *testing.T) {
 	pinnedRemote(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
-		t.Error("bare command must NOT contact the remote")
+		t.Error("a --local command must NOT contact the remote")
 	}))
+	t.Setenv(remoteEnv, "")
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
-	out, _, err := runRoot(t, []string{"jobs", "list"})
+	out, _, err := runRoot(t, []string{"--local", "jobs", "list"})
 	if err != nil {
 		t.Fatalf("local jobs list: %v", err)
 	}
 	if strings.TrimSpace(out) != "no jobs" {
 		t.Fatalf("expected local empty listing, got %q", out)
 	}
-}
-
-// A run with no --remote executes on this machine even when hosts.toml names a
-// default remote, so it says so on stderr, and it still never contacts the
-// remote.
-func TestLocalRunNotesTheDefaultRemote(t *testing.T) {
-	pinnedRemote(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
-		t.Error("a bare run must NOT contact the remote")
-	}))
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
-
-	// Each run names something absent, so it fails after the notice instead of
-	// running anything.
+	// Each run names something absent, so it fails locally instead of running.
 	for _, args := range [][]string{
-		{"playbook", "run", "site.yml", "--source", "absent"},
-		{"workspace", "plan", "absent"},
-		{"workspace", "apply", "absent"},
-		{"workspace", "destroy", "absent"},
+		{"--local", "playbook", "run", "site.yml", "--source", "absent"},
+		{"--local", "workspace", "plan", "absent"},
 	} {
-		_, errOut, err := runRoot(t, args)
-		if err == nil {
+		if _, _, err := runRoot(t, args); err == nil {
 			t.Fatalf("%v succeeded against an absent target", args)
 		}
-		if !strings.Contains(errOut, `not on the default remote "box"`) {
-			t.Errorf("%v printed no local-run notice on stderr: %q", args, errOut)
-		}
-	}
-}
-
-// With no default remote stored there is nothing to confuse a local run with,
-// so it prints no notice.
-func TestLocalRunWithoutDefaultRemoteIsQuiet(t *testing.T) {
-	withConfigHome(t)
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
-
-	_, errOut, _ := runRoot(t, []string{"workspace", "plan", "absent"})
-	if strings.Contains(errOut, "default remote") {
-		t.Fatalf("notice printed with no default remote: %q", errOut)
 	}
 }
 
@@ -243,10 +214,27 @@ func TestHostFlagDistinctFromRemote(t *testing.T) {
 	if adhoc.Flags().Lookup("host") == nil {
 		t.Error("`command` should carry the ansible --host pattern flag")
 	}
-	// Setting --host on the command verb does not enter remote mode: selectedRemote
-	// keys only on --remote/EXOCOMP_REMOTE.
-	if _, active := selectedRemote(adhoc); active {
-		t.Error("--host must not activate remote client mode")
+	// Setting --host on the command verb does not enter remote mode: selectRemote
+	// keys only on --remote, EXOCOMP_REMOTE and the hosts.toml default. A pinned
+	// remote named like the host pattern must not be picked up either.
+	withConfigHome(t)
+	t.Setenv(remoteEnv, "")
+	if err := saveHostsConfig(hostsConfig{Hosts: map[string]hostEntry{
+		"web": {Endpoint: "https://web.invalid", Fingerprint: "sha256:00"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := adhoc.ParseFlags([]string{"--host", "web"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := adhoc.Flags().Lookup("host").Value.String(); got != "web" {
+		t.Fatalf("--host parsed as %q, want web", got)
+	}
+	if f := adhoc.Flags().Lookup(remoteFlag); f == nil || f.Changed {
+		t.Fatalf("--host set --remote (%v)", f)
+	}
+	if sel, err := selectRemote(adhoc); err != nil || sel.active {
+		t.Errorf("--host must not activate remote client mode (%+v, %v)", sel, err)
 	}
 }
 

@@ -530,15 +530,15 @@ func TestNoFollowRefusedLocally(t *testing.T) {
 	}
 }
 
-// The LOCAL path is unchanged: a bare write command never contacts the pinned
-// remote, it fails against the local (empty) data dir.
-func TestBareWriteStaysLocal(t *testing.T) {
+// The LOCAL path is unchanged: a --local write command never contacts the
+// pinned default remote, it fails against the local (empty) data dir.
+func TestLocalWriteStaysLocal(t *testing.T) {
 	pinnedRemote(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		t.Errorf("bare command must NOT contact the remote (%s %s)", r.Method, r.URL.Path)
+		t.Errorf("a --local command must NOT contact the remote (%s %s)", r.Method, r.URL.Path)
 	}))
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
-	_, _, err := runRoot(t, []string{"workspace", "plan", "edge"})
+	_, _, err := runRoot(t, []string{"--local", "workspace", "plan", "edge"})
 	if err == nil {
 		t.Fatal("a plan against an empty data dir must fail locally")
 	}

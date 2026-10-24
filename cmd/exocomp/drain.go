@@ -42,7 +42,7 @@ func newDrainCmd() *cobra.Command {
 			"reports readiness without cordoning. `drain interrupted` lists the jobs a reboot " +
 			"left interrupted, for re-driving afterwards.\n\n" +
 			"drain controls a RUNNING daemon over the operator API, so it needs a selected " +
-			"remote (--remote or EXOCOMP_REMOTE) — the control node targets its own daemon.",
+			"remote (--remote, EXOCOMP_REMOTE, or the hosts.toml default) — the control node targets its own daemon.",
 		Example: "exocomp --remote box drain --wait",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -82,7 +82,7 @@ func runDrain(cmd *cobra.Command, opt drainOptions) error {
 		return err
 	}
 	if !remote {
-		return errors.New("drain controls a running daemon; select it with --remote (or EXOCOMP_REMOTE)")
+		return errors.New("drain controls a running daemon; select it with --remote, EXOCOMP_REMOTE, or a default from `exocomp login`")
 	}
 
 	ctx := cmd.Context()

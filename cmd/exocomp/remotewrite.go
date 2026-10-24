@@ -90,7 +90,7 @@ func printRemoteGated(cmd *cobra.Command, p client.ApprovalPending) error {
 	out := cmd.OutOrStdout()
 	_, _ = fmt.Fprintf(out, "job %d gated (%s); approval %d expires %s (in %s)\n",
 		p.JobID, p.State, p.ApprovalID, fmtWireTS(p.ExpiresAt), ttlLabel(p.TTLSeconds))
-	_, err := fmt.Fprintf(out, "decide it with `exocomp %s approval decide %d --approve`\n",
+	_, err := fmt.Fprintf(out, "decide it with `exocomp %sapproval decide %d --approve`\n",
 		remoteSelectorArg(cmd), p.ApprovalID)
 	return err
 }
@@ -102,17 +102,18 @@ func ttlLabel(seconds int64) string {
 	return (time.Duration(seconds) * time.Second).String()
 }
 
-// remoteSelectorArg renders the --remote argument to repeat in a suggested
-// command, so a printed next step targets the same daemon this one did.
+// remoteSelectorArg renders the --remote argument, with a trailing space, to
+// repeat in a suggested command, so a printed next step targets the same daemon
+// this one did. A remote chosen by the hosts.toml default needs no flag.
 func remoteSelectorArg(cmd *cobra.Command) string {
-	selector, active := selectedRemote(cmd)
-	if !active {
+	sel, err := selectRemote(cmd)
+	if err != nil || !sel.active || sel.fromDefault {
 		return ""
 	}
-	if selector == "" {
-		return "--remote="
+	if sel.selector == "" {
+		return "--remote= "
 	}
-	return "--remote " + selector
+	return "--remote " + sel.selector + " "
 }
 
 // followRemoteJob streams the job's events to the terminal state and returns the

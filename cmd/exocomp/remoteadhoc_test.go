@@ -172,3 +172,32 @@ func TestRemoteCommandNeedsAnOperatorToken(t *testing.T) {
 		t.Fatalf("a refused run enqueued %d job(s)", len(jobs))
 	}
 }
+
+// With the daemon as the hosts.toml default, a bare `command` runs there with
+// no flag, and --local keeps a command on this machine.
+func TestBareCommandRunsOnTheDefaultDaemon(t *testing.T) {
+	d := startTestDaemon(t)
+	d.pin(t, "box", store.ScopeOperator, true)
+	t.Setenv(remoteEnv, "")
+	root := remoteSource(t, d)
+
+	out, _, err := runRoot(t, []string{"command", "--source", "infra", "--host", "web", "--", "echo", "hello"})
+	if err != nil {
+		t.Fatalf("bare command: %v\n%s", err, out)
+	}
+	job := onlyJob(t, d)
+	if job.Args.Dir != root || !slices.Contains(job.Args.EgressPorts, 443) {
+		t.Errorf("job dir %q egress %v, want the source's checkout and default egress", job.Args.Dir, job.Args.EgressPorts)
+	}
+	assertNoLocalStore(t)
+
+	if _, _, err := runRoot(t, []string{"--local", "source", "list"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(localDataDir(t)); err != nil {
+		t.Fatalf("--local should open the local store: %v", err)
+	}
+	if n := len(d.specs()); n != 1 {
+		t.Fatalf("daemon ran %d jobs, want 1", n)
+	}
+}
