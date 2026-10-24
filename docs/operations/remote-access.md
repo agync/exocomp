@@ -116,6 +116,13 @@ Writes enqueue on the remote daemon and return its own envelope.
 | `workspace apply` | Enqueues, prints the job id — or the pending approval, its policy, deadline and TTL when the plan's verdict gates it |
 | `approval decide` | Settles the approval on the daemon, which derives the capability token itself. Needs an **`approve`-scope** token: `operator` may enqueue but may not settle what it enqueued, and no token may decide an approval for a job it asked for itself |
 | `jobs follow <id>` | Streams the job's events and exits with the job's code |
+| `source add`, `rm`, `sync`, `egress`, `run-secrets` | Changes the source on the daemon. A `--path` names a tree on the daemon's host; `--allowed-signers` is read here and its content sent. A git source prints the deploy key's public half the daemon generated |
+| `secrets add`, `replace`, `rm`, `list` | Seals on the daemon. The value is read from stdin here and sent over the pinned connection; no answer carries it. `rm` of a secret a binding still maps needs `--force` or `--assume-yes`, as locally |
+| `run-secret add`, `rm`, `list` | Changes the bindings on the daemon |
+
+The source, secret and run-secret verbs take an `operator` token. A deploy key or the fleet key
+that exocomp generated cannot be bound or replaced over the API; do that on the daemon's host
+with `--local` ([Decision 0027](../decisions/0027-credential-plane-over-the-api.md)).
 
 Every write accepts `--idempotency-key` (or `EXOCOMP_IDEMPOTENCY_KEY`), which travels as the
 `Idempotency-Key` header: a retried request dedups to the one job instead of enqueuing a

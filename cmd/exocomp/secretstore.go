@@ -1,10 +1,6 @@
 package main
 
 import (
-	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,7 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/client"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -31,38 +29,24 @@ func newSecretsCmd() *cobra.Command {
 	return cmd
 }
 
-// generatedValueBytes is the entropy behind a --generate value: 32 random bytes
-// (256 bits), rendered base64url so the sealed plaintext is printable env-safe
-// ASCII.
-const generatedValueBytes = 32
-
-// maxSecretValueBytes is the sealed-secret value size ceiling.
-const maxSecretValueBytes = 1 << 20
-
-// readSecretValue reads a secret value from r, refusing a value at or over
-// maxSecretValueBytes rather than silently sealing it truncated. It reads one
-// byte past the limit — bounding the buffer instead of reading unboundedly —
-// so the overrun is detected without ever holding more than the limit plus
-// one byte in memory.
+// readSecretValue reads a secret value from r, refusing a value over
+// service.MaxSecretValueBytes rather than silently sealing it truncated. It
+// reads one byte past the limit, so the overrun is detected without holding more
+// than the limit plus one byte in memory. The trailing newline a shell adds is
+// trimmed, and an empty value is refused.
 func readSecretValue(r io.Reader) ([]byte, error) {
-	value, err := io.ReadAll(io.LimitReader(r, maxSecretValueBytes+1))
+	value, err := io.ReadAll(io.LimitReader(r, service.MaxSecretValueBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(value) > maxSecretValueBytes {
-		return nil, fmt.Errorf("value exceeds the %d-byte limit", maxSecretValueBytes)
+	if len(value) > service.MaxSecretValueBytes {
+		return nil, fmt.Errorf("value exceeds the %d-byte limit", service.MaxSecretValueBytes)
+	}
+	value = []byte(strings.TrimRight(string(value), "\n"))
+	if len(value) == 0 {
+		return nil, service.ErrEmptySecretValue
 	}
 	return value, nil
-}
-
-// generateSecretValue mints a cryptographically-random secret value.
-func generateSecretValue() ([]byte, error) {
-	raw := make([]byte, generatedValueBytes)
-	if _, err := rand.Read(raw); err != nil {
-		return nil, fmt.Errorf("generate value: %w", err)
-	}
-	enc := base64.RawURLEncoding.EncodeToString(raw)
-	return []byte(enc), nil
 }
 
 // parseExpiry turns a --expires flag into an absolute instant. An empty string
@@ -85,6 +69,56 @@ func parseExpiry(spec string) (*time.Time, error) {
 		return &u, nil
 	}
 	return nil, fmt.Errorf("expiry %q is neither a Go duration (720h) nor an RFC3339 timestamp", spec)
+}
+
+// formatExpiry renders an expiry as the RFC3339 text the API carries, or "".
+func formatExpiry(at *time.Time) string {
+	if at == nil {
+		return ""
+	}
+	return at.UTC().Format(time.RFC3339)
+}
+
+// parseWireTime reads an optional RFC3339 wire timestamp; an unparseable one
+// reads as none, since it only feeds display.
+func parseWireTime(v *string) *time.Time {
+	if v == nil || *v == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, *v)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+// printSecretSealed reports a sealed secret, by name and size, never by value.
+func printSecretSealed(cmd *cobra.Command, name, kind, source string, size int, expiresAt *time.Time) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sealed %q (kind %s, source %s, %d bytes)%s\n",
+		name, kind, source, size, expirySuffix(expiresAt))
+}
+
+// printSecretReplaced names what actually happened: a generated secret is
+// rotated (nothing upstream holds the old value), a user secret's sealed copy is
+// only replaced, and its previous value may still be live upstream.
+func printSecretReplaced(cmd *cobra.Command, name string, rotated, regenerated bool, size int,
+	setExpiry bool, expiresAt *time.Time) {
+	verb, mode := "replaced", "read from stdin"
+	if rotated {
+		verb = "rotated"
+	}
+	if regenerated {
+		mode = "regenerated"
+	}
+	suffix := ""
+	if setExpiry {
+		suffix = expirySuffix(expiresAt)
+	}
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s %q (%s, %d bytes)%s\n", verb, name, mode, size, suffix)
+	if !regenerated {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
+			"reminder: the PREVIOUS value may still be live upstream; revoking it there is yours to do.")
+	}
 }
 
 // expirySuffix renders " (expires <RFC3339>)" for a set expiry, or "" for none.
@@ -112,27 +146,21 @@ func newSecretsAddCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("secrets add: %w", err)
 			}
-
-			var (
-				value  []byte
-				source string
-			)
-			if generate {
-				value, err = generateSecretValue()
-				if err != nil {
-					return fmt.Errorf("secrets add: %w", err)
-				}
-				source = store.SecretSourceGenerated
-			} else {
-				value, err = readSecretValue(cmd.InOrStdin())
-				if err != nil {
+			var value []byte
+			if !generate {
+				if value, err = readSecretValue(cmd.InOrStdin()); err != nil {
 					return fmt.Errorf("secrets add: read value from stdin: %w", err)
 				}
-				value = []byte(strings.TrimRight(string(value), "\n"))
-				if len(value) == 0 {
-					return errors.New("secrets add: empty value on stdin")
-				}
-				source = store.SecretSourceUser
+			}
+			defer zero(value)
+
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteSecretAdd(cmd, rc, client.SecretAddRequest{
+					Name: name, Kind: kind, Value: value, Generate: generate,
+					ExpiresAt: formatExpiry(expiresAt),
+				})
 			}
 
 			dir, err := dataDir()
@@ -144,29 +172,18 @@ func newSecretsAddCmd() *cobra.Command {
 				return fmt.Errorf("secrets add: open envelope (run `exocomp init` first): %w", err)
 			}
 			defer func() { _ = env.Close() }()
-
-			sealed, err := env.Seal(name, kind, value)
-			if err != nil {
-				return fmt.Errorf("secrets add: %w", err)
-			}
 			st, err := openStore()
 			if err != nil {
 				return err
 			}
 			defer func() { _ = st.Close() }()
-			if _, err := st.CreateSecret(cmd.Context(), store.SecretRow{
-				Name:       sealed.Name,
-				Kind:       sealed.Kind,
-				Nonce:      sealed.Nonce,
-				Ciphertext: sealed.Ciphertext,
-				AAD:        sealed.Name + "|" + sealed.Kind,
-				Source:     source,
-				ExpiresAt:  expiresAt,
-			}); err != nil {
+			res, err := service.New(st, dir, nil).SealSecret(cmd.Context(), env, service.SealSecretInput{
+				Name: name, Kind: kind, Value: value, Generate: generate, ExpiresAt: expiresAt,
+			})
+			if err != nil {
 				return fmt.Errorf("secrets add: %w", err)
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sealed %q (kind %s, source %s, %d bytes)%s\n",
-				name, kind, source, len(value), expirySuffix(expiresAt))
+			printSecretSealed(cmd, name, res.Row.Kind, res.Row.Source, res.Bytes, res.Row.ExpiresAt)
 			return nil
 		},
 	}
@@ -199,6 +216,12 @@ func newSecretsReplaceCmd() *cobra.Command {
 				}
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteSecretReplace(cmd, rc, name, generate, reExpire, expiresAt)
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -209,32 +232,15 @@ func newSecretsReplaceCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("secrets replace: %w", err)
 			}
-
 			// A generated secret regenerates by default (nothing upstream holds the
 			// old value); a user secret's new value comes from stdin. --generate
 			// forces the mint path regardless of the recorded source.
-			var (
-				value       []byte
-				fromStdin   bool
-				userReplace bool
-			)
-			switch {
-			case generate || existing.Source == store.SecretSourceGenerated:
-				value, err = generateSecretValue()
-				if err != nil {
-					return fmt.Errorf("secrets replace: %w", err)
+			var value []byte
+			if !generate && existing.Source != store.SecretSourceGenerated {
+				if value, err = readSecretValue(cmd.InOrStdin()); err != nil {
+					return fmt.Errorf("secrets replace: read value from stdin (a user secret needs a new value): %w", err)
 				}
-			default:
-				value, err = readSecretValue(cmd.InOrStdin())
-				if err != nil {
-					return fmt.Errorf("secrets replace: read value from stdin: %w", err)
-				}
-				value = []byte(strings.TrimRight(string(value), "\n"))
-				if len(value) == 0 {
-					return errors.New("secrets replace: empty value on stdin (a user secret needs a new value)")
-				}
-				fromStdin = true
-				userReplace = true
+				defer zero(value)
 			}
 
 			dir, err := dataDir()
@@ -247,41 +253,13 @@ func newSecretsReplaceCmd() *cobra.Command {
 			}
 			defer func() { _ = env.Close() }()
 
-			// Reseal under the unchanged name|kind so the row still opens.
-			sealed, err := env.Seal(existing.Name, existing.Kind, value)
+			res, err := service.New(st, dir, nil).ReplaceSecret(cmd.Context(), env, service.ReplaceSecretInput{
+				Name: name, Value: value, Generate: generate, SetExpiry: reExpire, ExpiresAt: expiresAt,
+			})
 			if err != nil {
 				return fmt.Errorf("secrets replace: %w", err)
 			}
-			if err := st.RotateSecret(cmd.Context(), name, sealed.Nonce, sealed.Ciphertext); err != nil {
-				return fmt.Errorf("secrets replace: %w", err)
-			}
-			if reExpire {
-				if err := st.SetSecretExpiry(cmd.Context(), name, expiresAt); err != nil {
-					return fmt.Errorf("secrets replace: %w", err)
-				}
-			}
-
-			// The verb names what actually happened: a generated secret is
-			// genuinely rotated (nothing upstream holds the old value), a user
-			// secret's sealed copy is only replaced.
-			verb := "replaced"
-			if existing.Source == store.SecretSourceGenerated {
-				verb = "rotated"
-			}
-			mode := "regenerated"
-			if fromStdin {
-				mode = "read from stdin"
-			}
-			suffix := ""
-			if reExpire {
-				suffix = expirySuffix(expiresAt)
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s %q (%s, %d bytes)%s\n",
-				verb, name, mode, len(value), suffix)
-			if userReplace {
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
-					"reminder: the PREVIOUS value may still be live upstream; revoking it there is yours to do.")
-			}
+			printSecretReplaced(cmd, name, res.Rotated, res.Regenerated, res.Bytes, res.SetExpiry, res.ExpiresAt)
 			return nil
 		},
 	}
@@ -298,13 +276,18 @@ func newSecretsRmCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteSecretRm(cmd, rc, name, force)
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
 			}
 			defer func() { _ = st.Close() }()
 
-			refs, err := bindingsReferencing(cmd.Context(), st, name)
+			refs, err := service.New(st, "", nil).SecretBindings(cmd.Context(), name)
 			if err != nil {
 				return fmt.Errorf("secrets rm: %w", err)
 			}
@@ -338,28 +321,6 @@ func newSecretsRmCmd() *cobra.Command {
 	return rm
 }
 
-// bindingsReferencing returns every run_secret pair whose secret_name is name,
-// across all bindings — the guard the delete path checks before removing a row.
-func bindingsReferencing(ctx context.Context, st *store.Store, name string) ([]store.RunSecret, error) {
-	bindings, err := st.ListRunSecretBindings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var refs []store.RunSecret
-	for _, b := range bindings {
-		pairs, err := st.RunSecretsByBinding(ctx, b)
-		if err != nil {
-			return nil, err
-		}
-		for _, p := range pairs {
-			if p.SecretName == name {
-				refs = append(refs, p)
-			}
-		}
-	}
-	return refs, nil
-}
-
 // expiryMarker renders a hygiene marker for the list view: EXPIRED for a past
 // instant, "expires in Nd" for a future one, empty when there is no expiry.
 func expiryMarker(at *time.Time, now time.Time) string {
@@ -389,27 +350,38 @@ func newSecretsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := openStore()
-			if err != nil {
+			var views []wire.SecretView
+			if rc, ok, err := remoteClient(cmd); err != nil {
 				return err
-			}
-			defer func() { _ = st.Close() }()
-			rows, err := st.ListSecrets(cmd.Context())
-			if err != nil {
-				return err
+			} else if ok {
+				if views, err = rc.ListSecrets(cmd.Context()); err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+			} else {
+				st, err := openStore()
+				if err != nil {
+					return err
+				}
+				defer func() { _ = st.Close() }()
+				rows, err := st.ListSecrets(cmd.Context())
+				if err != nil {
+					return err
+				}
+				views = wire.NewSecretList(rows)
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindSecretList, wire.NewSecretList(rows))
+				return emitJSON(cmd, wire.KindSecretList, views)
 			}
-			if len(rows) == 0 {
+			if len(views) == 0 {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "no sealed secrets")
 				return nil
 			}
 			now := time.Now().UTC()
-			for _, s := range rows {
+			for _, s := range views {
+				created, _ := time.Parse(time.RFC3339, s.CreatedAt)
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-30s %-12s %-10s created %s  %s\n",
-					s.Name, s.Kind, s.Source, s.CreatedAt.UTC().Format("2006-01-02 15:04"),
-					expiryMarker(s.ExpiresAt, now))
+					s.Name, s.Kind, s.Source, created.UTC().Format("2006-01-02 15:04"),
+					expiryMarker(parseWireTime(s.ExpiresAt), now))
 			}
 			return nil
 		},

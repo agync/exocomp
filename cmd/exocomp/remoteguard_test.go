@@ -39,10 +39,10 @@ func TestRemoteSelectedRefusesCommandsWithoutARemotePath(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"source", "add", "demo", "--url", "https://example.invalid/demo.git"}, "no remote path yet"},
-		{[]string{"source", "rm", "demo"}, "no remote path yet"},
-		{[]string{"run-secret", "add", "demo", "TOKEN", "tok"}, "no remote path yet"},
-		{[]string{"secrets", "add", "tok"}, "no remote path yet"},
+		{[]string{"inventory", "add", "inv", "--path", "/srv/hosts"}, "no remote path yet"},
+		{[]string{"inventory", "rm", "inv"}, "no remote path yet"},
+		{[]string{"policy", "rm", "p"}, "no remote path yet"},
+		{[]string{"runner", "rm", "r"}, "no remote path yet"},
 		{[]string{"schedule", "rm", "nightly"}, "no remote path yet"},
 		{[]string{"rule", "rm", "r"}, "no remote path yet"},
 		{[]string{"jobs", "redrive"}, "runs only on the daemon's host"},
@@ -118,7 +118,7 @@ func TestBareCommandUsesTheDefaultRemote(t *testing.T) {
 	}
 }
 
-func TestLocalRunsAPendingCommandHere(t *testing.T) {
+func TestLocalRunsACommandHere(t *testing.T) {
 	pinnedRemote(t, http.NotFoundHandler())
 	t.Setenv(remoteEnv, "")
 	dir := isolatedDataDir(t)
@@ -283,7 +283,7 @@ func TestRemoteRefusalIsAWireErrorUnderJSON(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"source", "rm", "demo"}, "no remote path yet"},
+		{[]string{"inventory", "rm", "demo"}, "no remote path yet"},
 		{[]string{"token", "list"}, "runs only on the daemon's host"},
 	} {
 		out, _, err := runRoot(t, append([]string{"--remote", "box", "--output", "json"}, tc.args...))

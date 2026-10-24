@@ -14,6 +14,7 @@ import (
 	"exocomp.dev/exocomp/internal/deps"
 	"exocomp.dev/exocomp/internal/naming"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -129,6 +130,11 @@ type sourceAddSpec struct {
 func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
 	if err := naming.ValidateComponent("source", name); err != nil {
 		return fmt.Errorf("source add: %w", err)
+	}
+	if rc, ok, err := remoteClient(cmd); err != nil {
+		return err
+	} else if ok {
+		return runRemoteSourceAdd(cmd, rc, name, spec)
 	}
 
 	st, err := openStore()
@@ -293,6 +299,11 @@ func newSourceSyncCmd() *cobra.Command {
 }
 
 func runSourceSync(cmd *cobra.Command, name, refOverride string) error {
+	if rc, ok, err := remoteClient(cmd); err != nil {
+		return err
+	} else if ok {
+		return runRemoteSourceSync(cmd, rc, name, refOverride)
+	}
 	st, err := openStore()
 	if err != nil {
 		return err
@@ -425,6 +436,11 @@ func newSourceRmCmd() *cobra.Command {
 }
 
 func runSourceRm(cmd *cobra.Command, name string) error {
+	if rc, ok, err := remoteClient(cmd); err != nil {
+		return err
+	} else if ok {
+		return runRemoteSourceRm(cmd, rc, name)
+	}
 	st, err := openStore()
 	if err != nil {
 		return err
@@ -480,6 +496,11 @@ func runSourceEgress(cmd *cobra.Command, name string, portArgs []string) (err er
 		}
 		ports = append(ports, p)
 	}
+	if rc, ok, rerr := remoteClient(cmd); rerr != nil {
+		return rerr
+	} else if ok {
+		return runRemoteSourceEgress(cmd, rc, name, ports)
+	}
 
 	st, err := openStore()
 	if err != nil {
@@ -508,15 +529,19 @@ func runSourceEgress(cmd *cobra.Command, name string, portArgs []string) (err er
 		return err
 	}
 
-	if len(updated.ExtraEgressPorts) == 0 {
-		_, err = fmt.Fprintf(cmd.OutOrStdout(),
-			"source %s default egress ports: none (ansible kind default only)\n", updated.Name)
-		return err
+	printSourceEgress(cmd, updated.Name, updated.ExtraEgressPorts)
+	return nil
+}
+
+// printSourceEgress reports a source's default egress set after a change.
+func printSourceEgress(cmd *cobra.Command, name string, ports []int) {
+	if len(ports) == 0 {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+			"source %s default egress ports: none (ansible kind default only)\n", name)
+		return
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(),
-		"source %s default egress ports: %v (any host on these ports)\n",
-		updated.Name, updated.ExtraEgressPorts)
-	return err
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+		"source %s default egress ports: %v (any host on these ports)\n", name, ports)
 }
 
 func newSourceRunSecretsCmd() *cobra.Command {
@@ -546,6 +571,11 @@ func newSourceRunSecretsCmd() *cobra.Command {
 }
 
 func runSourceRunSecrets(cmd *cobra.Command, name, binding string) (err error) {
+	if rc, ok, rerr := remoteClient(cmd); rerr != nil {
+		return rerr
+	} else if ok {
+		return runRemoteSourceRunSecrets(cmd, rc, name, binding)
+	}
 	st, err := openStore()
 	if err != nil {
 		return err
@@ -573,15 +603,20 @@ func runSourceRunSecrets(cmd *cobra.Command, name, binding string) (err error) {
 		return err
 	}
 
-	if updated.DefaultRunSecrets == "" {
-		_, err = fmt.Fprintf(cmd.OutOrStdout(),
-			"source %s default run-secrets: none (a run injects only the binding it names)\n", updated.Name)
-		return err
+	printSourceRunSecrets(cmd, updated.Name, updated.DefaultRunSecrets)
+	return nil
+}
+
+// printSourceRunSecrets reports a source's default run-secret binding after a
+// change.
+func printSourceRunSecrets(cmd *cobra.Command, name, binding string) {
+	if binding == "" {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+			"source %s default run-secrets: none (a run injects only the binding it names)\n", name)
+		return
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(),
-		"source %s default run-secrets: %s (every run of this source, unless it names its own)\n",
-		updated.Name, updated.DefaultRunSecrets)
-	return err
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+		"source %s default run-secrets: %s (every run of this source, unless it names its own)\n", name, binding)
 }
 
 // purgeSourceCachesIfUnreferenced removes a deleted source's dependency caches
@@ -648,8 +683,13 @@ func newRunSecretAddCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			binding, envName, secretName := args[0], args[1], args[2]
-			if !isEnvName(envName) {
+			if !service.ValidEnvName(envName) {
 				return fmt.Errorf("run-secret add: %q is not a valid environment variable name", envName)
+			}
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteRunSecretAdd(cmd, rc, binding, envName, secretName)
 			}
 			st, err := openStore()
 			if err != nil {
@@ -657,22 +697,43 @@ func newRunSecretAddCmd() *cobra.Command {
 			}
 			defer func() { _ = st.Close() }()
 
-			// Refuse to bind a secret that does not exist: the failure belongs
-			// here, not at run time when a plugin silently gets an empty token.
-			if _, err := st.GetSecret(cmd.Context(), secretName); err != nil {
-				if errors.Is(err, store.ErrNotFound) {
-					return fmt.Errorf("run-secret add: no sealed secret %q (add it with `exocomp secrets add`)", secretName)
-				}
-				return err
+			pair, err := service.New(st, "", nil).BindRunSecret(cmd.Context(), binding, envName, secretName)
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("run-secret add: no sealed secret %q (add it with `exocomp secrets add`)", secretName)
 			}
-			if _, err := st.AddRunSecret(cmd.Context(), store.RunSecret{
-				Binding: binding, EnvName: envName, SecretName: secretName,
-			}); err != nil {
+			if err != nil {
 				return fmt.Errorf("run-secret add: %w", err)
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "bound %s -> %s under %q\n", envName, secretName, binding)
+			printRunSecretBound(cmd, pair.EnvName, pair.SecretName, pair.Binding)
 			return nil
 		},
+	}
+}
+
+// printRunSecretBound reports a new run-secret pair.
+func printRunSecretBound(cmd *cobra.Command, envName, secretName, binding string) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "bound %s -> %s under %q\n", envName, secretName, binding)
+}
+
+// printRunSecretBindings lists binding names.
+func printRunSecretBindings(cmd *cobra.Command, names []string) {
+	if len(names) == 0 {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "no run-secret bindings")
+		return
+	}
+	for _, n := range names {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), n)
+	}
+}
+
+// printRunSecretPairs lists the pairs under one binding.
+func printRunSecretPairs(cmd *cobra.Command, binding string, pairs []store.RunSecret) {
+	if len(pairs) == 0 {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "no pairs under %q\n", binding)
+		return
+	}
+	for _, p := range pairs {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-24s -> %s\n", p.EnvName, p.SecretName)
 	}
 }
 
@@ -682,39 +743,34 @@ func newRunSecretListCmd() *cobra.Command {
 		Short: "List bindings, or the pairs under one binding",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			binding := ""
+			if len(args) == 1 {
+				binding = args[0]
+			}
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteRunSecretList(cmd, rc, binding)
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
 			}
 			defer func() { _ = st.Close() }()
-			out := cmd.OutOrStdout()
 
-			if len(args) == 0 {
+			if binding == "" {
 				names, err := st.ListRunSecretBindings(cmd.Context())
 				if err != nil {
 					return err
 				}
-				if len(names) == 0 {
-					_, _ = fmt.Fprintln(out, "no run-secret bindings")
-					return nil
-				}
-				for _, n := range names {
-					_, _ = fmt.Fprintln(out, n)
-				}
+				printRunSecretBindings(cmd, names)
 				return nil
 			}
-
-			pairs, err := st.RunSecretsByBinding(cmd.Context(), args[0])
+			pairs, err := st.RunSecretsByBinding(cmd.Context(), binding)
 			if err != nil {
 				return err
 			}
-			if len(pairs) == 0 {
-				_, _ = fmt.Fprintf(out, "no pairs under %q\n", args[0])
-				return nil
-			}
-			for _, p := range pairs {
-				_, _ = fmt.Fprintf(out, "%-24s -> %s\n", p.EnvName, p.SecretName)
-			}
+			printRunSecretPairs(cmd, binding, pairs)
 			return nil
 		},
 	}
@@ -726,6 +782,11 @@ func newRunSecretRmCmd() *cobra.Command {
 		Short: "Remove every pair under a binding",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteRunSecretRm(cmd, rc, args[0])
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -857,7 +918,7 @@ func parseBinds(binds []string) (map[string]string, error) {
 		if !ok || secret == "" {
 			return nil, fmt.Errorf("bind %q is not ENV_NAME=secret-name", b)
 		}
-		if !isEnvName(name) {
+		if !service.ValidEnvName(name) {
 			return nil, fmt.Errorf("bind env name %q is not a valid identifier", name)
 		}
 		if _, dup := out[name]; dup {
@@ -866,23 +927,6 @@ func parseBinds(binds []string) (map[string]string, error) {
 		out[name] = secret
 	}
 	return out, nil
-}
-
-// isEnvName reports whether s is a POSIX-shaped environment variable name.
-func isEnvName(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		switch {
-		case r == '_':
-		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z':
-		case r >= '0' && r <= '9' && i > 0:
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 // openSealed opens a sealed secret's plaintext from the envelope.
