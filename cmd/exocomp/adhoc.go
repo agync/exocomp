@@ -291,10 +291,6 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		}
 	}()
 
-	if spec.become && !spec.privileged && isLocalHostAdhoc(spec.pattern, spec.inventory) {
-		return 0, fmt.Errorf("%s: local privilege escalation with --become requires --privileged (operator-gated, unsandboxed)", spec.runbook)
-	}
-
 	root, rootReadOnly, err := sourceCheckoutRoot(ctx, st, dir, spec.sourceName, spec.runbook)
 	if err != nil {
 		return 0, err
@@ -464,16 +460,6 @@ func gateAdhoc(ctx context.Context, st *store.Store, dir string, spec queue.Spec
 	}
 	printGatedJob(out, job, approval)
 	return 0, nil
-}
-
-// isLocalHostAdhoc reports whether an ad-hoc invocation exclusively targets localhost.
-func isLocalHostAdhoc(pattern, inventory string) bool {
-	p := strings.TrimSpace(pattern)
-	inv := strings.TrimSpace(inventory)
-	if inv == "localhost," || inv == "127.0.0.1," {
-		return true
-	}
-	return (p == "localhost" || p == "127.0.0.1" || p == "::1") && (inv == "" || inv == "localhost," || inv == "127.0.0.1,")
 }
 
 // appendOutputLine keeps a job event's text for the per-host parse unless it is

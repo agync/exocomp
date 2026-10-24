@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"slices"
 	"testing"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -51,5 +52,20 @@ func TestRemoteCommandExitsWithTheJobsCode(t *testing.T) {
 		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 3 {
 			t.Fatalf("%v: exit = %v, want 3\n%s", args, err, out)
 		}
+	}
+}
+
+// --become on the daemon's own host is an ordinary become: the run is enqueued
+// with it, and no flag beyond --become is asked for.
+func TestRemoteBecomeOnLoopbackIsEnqueued(t *testing.T) {
+	d := startTestDaemon(t)
+	d.pin(t, "box", store.ScopeOperator, true)
+
+	if out, _, err := runRoot(t, []string{"--remote", "box", "command", "--become", "--host", "localhost", "--", "id"}); err != nil {
+		t.Fatalf("command --become on localhost: %v\n%s", err, out)
+	}
+	job := onlyJob(t, d)
+	if !slices.Contains(job.Args.Argv, "--become") || job.Args.Privileged {
+		t.Fatalf("argv %v privileged %v, want an unprivileged run with --become", job.Args.Argv, job.Args.Privileged)
 	}
 }
