@@ -25,6 +25,14 @@ type ScheduleArgs struct {
 	// hosts settles degraded, not failed, so a scheduled play against a fleet
 	// with a roaming machine does not page every time that machine sleeps.
 	TolerateUnreachable bool `json:"tolerate_unreachable,omitempty"`
+	// Source, on a kind-play schedule, names the registered source the play runs
+	// from: the playbook is relative to its checkout, the run's working directory
+	// is that checkout, and the fire inherits the source's default egress and
+	// run-secret binding at queue admission. Empty keeps the original shape, a
+	// playbook path used as given with no source. It lives in args_json beside
+	// the other per-kind fields, so no column and no migration: a row written
+	// before the field existed decodes to empty.
+	Source string `json:"source,omitempty"`
 }
 
 // Schedule is one row of the schedule table.

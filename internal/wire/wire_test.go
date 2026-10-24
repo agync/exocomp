@@ -243,6 +243,31 @@ func TestGoldenDoctorHealthEmpty(t *testing.T) {
 	}
 }
 
+// A play schedule's source is an identifier and travels in the projection; a
+// schedule with none leaves the key out, so existing consumers see no change.
+func TestScheduleViewCarriesSource(t *testing.T) {
+	views := wire.NewScheduleList([]store.Schedule{
+		{ID: 1, Name: "sourced", CronExpr: "@every 1h", Kind: "play", Enabled: true,
+			Args: store.ScheduleArgs{Argv: []string{"site.yml"}, Source: "infra"}},
+		{ID: 2, Name: "plain", CronExpr: "@every 1h", Kind: "play", Enabled: true,
+			Args: store.ScheduleArgs{Argv: []string{"/srv/site.yml"}}},
+	})
+	if views[0].Source != "infra" || views[1].Source != "" {
+		t.Fatalf("sources = %q, %q; want infra and empty", views[0].Source, views[1].Source)
+	}
+	var buf bytes.Buffer
+	if err := wire.WriteSuccess(&buf, wire.KindScheduleList, views); err != nil {
+		t.Fatalf("WriteSuccess: %v", err)
+	}
+	out := buf.String()
+	if got := strings.Count(out, `"source"`); got != 1 {
+		t.Fatalf("source keys = %d in %s, want 1 (omitted when empty)", got, out)
+	}
+	if !strings.Contains(out, `"source":"infra"`) {
+		t.Fatalf("schedule list = %s, want the source named", out)
+	}
+}
+
 func TestExitCodeTable(t *testing.T) {
 	cases := []struct {
 		code string
