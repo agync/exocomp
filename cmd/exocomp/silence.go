@@ -63,6 +63,12 @@ func newSilenceAddCmd() *cobra.Command {
 				return errors.New("silence add: --for is mandatory and must be positive")
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteSilenceAdd(cmd, rc, scope, value, reason, duration)
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -81,9 +87,8 @@ func newSilenceAddCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("silence add: %w", err)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "silence %d: %s until %s\n",
-				created.ID, scopeLabel(created), created.ExpiresAt.Format("2006-01-02 15:04:05Z"))
-			return err
+			printSilenceAdded(cmd, created.ID, created.ScopeKind, created.ScopeValue, created.ExpiresAt)
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&alert, "alert", "", "silence one alert name")
@@ -119,11 +124,52 @@ func silenceScope(alert, host string, global bool) (kind, value string, err erro
 	}
 }
 
-func scopeLabel(s store.Silence) string {
-	if s.ScopeKind == store.ScopeGlobal {
+func scopeLabel(kind, value string) string {
+	if kind == store.ScopeGlobal {
 		return "global pause"
 	}
-	return s.ScopeKind + " " + s.ScopeValue
+	return kind + " " + value
+}
+
+func printSilenceAdded(cmd *cobra.Command, id int64, kind, value string, expires time.Time) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "silence %d: %s until %s\n",
+		id, scopeLabel(kind, value), expires.Format("2006-01-02 15:04:05Z"))
+}
+
+// holdRow is one row of the silence and mute tables, which read the same.
+type holdRow struct {
+	id      int64
+	scope   string
+	expires time.Time
+	via     string
+	reason  string
+}
+
+// printHoldTable prints the silence or mute table, or the empty message
+// "no <noun>s" ("no active <noun>s" unless all).
+func printHoldTable(cmd *cobra.Command, rows []holdRow, noun string, all bool) error {
+	out := cmd.OutOrStdout()
+	if len(rows) == 0 {
+		if all {
+			_, _ = fmt.Fprintf(out, "no %ss\n", noun)
+		} else {
+			_, _ = fmt.Fprintf(out, "no active %ss\n", noun)
+		}
+		return nil
+	}
+	now := time.Now().UTC()
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "ID\tSCOPE\tEXPIRES\tLEFT\tVIA\tREASON")
+	for _, r := range rows {
+		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n",
+			r.id, r.scope, r.expires.Format("2006-01-02 15:04:05Z"),
+			leftLabel(r.expires, now), viaLabel(r.via), r.reason)
+	}
+	return w.Flush()
+}
+
+func printSilenceLifted(cmd *cobra.Command, id int64) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "silence %d lifted\n", id)
 }
 
 func newSilenceListCmd() *cobra.Command {
@@ -138,38 +184,34 @@ func newSilenceListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := openStore()
-			if err != nil {
+			var views []wire.SilenceView
+			if rc, ok, err := remoteClient(cmd); err != nil {
 				return err
-			}
-			defer func() { _ = st.Close() }()
-
-			rows, err := st.ListSilences(cmd.Context(), !all)
-			if err != nil {
-				return err
+			} else if ok {
+				if views, err = rc.ListSilences(cmd.Context(), all); err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+			} else {
+				st, err := openStore()
+				if err != nil {
+					return err
+				}
+				defer func() { _ = st.Close() }()
+				rows, err := st.ListSilences(cmd.Context(), !all)
+				if err != nil {
+					return err
+				}
+				views = wire.NewSilenceList(rows)
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindSilenceList, wire.NewSilenceList(rows))
+				return emitJSON(cmd, wire.KindSilenceList, views)
 			}
-			out := cmd.OutOrStdout()
-			if len(rows) == 0 {
-				if all {
-					_, _ = fmt.Fprintln(out, "no silences")
-				} else {
-					_, _ = fmt.Fprintln(out, "no active silences")
-				}
-				return nil
+			rows := make([]holdRow, 0, len(views))
+			for _, v := range views {
+				rows = append(rows, holdRow{v.ID, scopeLabel(v.ScopeKind, v.ScopeValue), wireTime(v.ExpiresAt),
+					v.CreatedVia, v.Reason})
 			}
-
-			now := time.Now().UTC()
-			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "ID\tSCOPE\tEXPIRES\tLEFT\tVIA\tREASON")
-			for _, s := range rows {
-				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n",
-					s.ID, scopeLabel(s), s.ExpiresAt.Format("2006-01-02 15:04:05Z"),
-					leftLabel(s.ExpiresAt, now), viaLabel(s.CreatedVia), s.Reason)
-			}
-			return w.Flush()
+			return printHoldTable(cmd, rows, "silence", all)
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "include silences that have already expired")
@@ -201,6 +243,12 @@ func newSilenceRmCmd() *cobra.Command {
 				return fmt.Errorf("silence rm: %q is not a silence id", args[0])
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteSilenceRm(cmd, rc, id)
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -213,8 +261,8 @@ func newSilenceRmCmd() *cobra.Command {
 				}
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "silence %d lifted\n", id)
-			return err
+			printSilenceLifted(cmd, id)
+			return nil
 		},
 	}
 }

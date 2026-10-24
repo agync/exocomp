@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -55,6 +54,12 @@ func newMuteAddCmd() *cobra.Command {
 				return errors.New("mute add: --for is mandatory and must be positive")
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteMuteAdd(cmd, rc, scope, value, reason, duration)
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -73,9 +78,8 @@ func newMuteAddCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("mute add: %w", err)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "mute %d: %s until %s\n",
-				created.ID, muteLabel(created), created.ExpiresAt.Format("2006-01-02 15:04:05Z"))
-			return err
+			printMuteAdded(cmd, created.ID, created.ScopeKind, created.ScopeValue, created.ExpiresAt)
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&alert, "alert", "", "mute one alert name")
@@ -109,11 +113,20 @@ func muteScope(alert, host string, global bool) (kind, value string, err error) 
 	}
 }
 
-func muteLabel(m store.NotifyMute) string {
-	if m.ScopeKind == store.ScopeGlobal {
+func muteLabel(kind, value string) string {
+	if kind == store.ScopeGlobal {
 		return "global"
 	}
-	return m.ScopeKind + " " + m.ScopeValue
+	return kind + " " + value
+}
+
+func printMuteAdded(cmd *cobra.Command, id int64, kind, value string, expires time.Time) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "mute %d: %s until %s\n",
+		id, muteLabel(kind, value), expires.Format("2006-01-02 15:04:05Z"))
+}
+
+func printMuteLifted(cmd *cobra.Command, id int64) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "mute %d lifted\n", id)
 }
 
 func newMuteListCmd() *cobra.Command {
@@ -128,44 +141,40 @@ func newMuteListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := openStore()
-			if err != nil {
-				if mode == outputJSON {
-					return failJSON(cmd, err)
-				}
+			var views []wire.MuteView
+			if rc, ok, err := remoteClient(cmd); err != nil {
 				return err
-			}
-			defer func() { _ = st.Close() }()
-
-			rows, err := st.ListNotifyMutes(cmd.Context(), !all)
-			if err != nil {
-				if mode == outputJSON {
-					return failJSON(cmd, err)
+			} else if ok {
+				if views, err = rc.ListMutes(cmd.Context(), all); err != nil {
+					return remoteFail(cmd, mode, err)
 				}
-				return err
+			} else {
+				st, err := openStore()
+				if err != nil {
+					if mode == outputJSON {
+						return failJSON(cmd, err)
+					}
+					return err
+				}
+				defer func() { _ = st.Close() }()
+				rows, err := st.ListNotifyMutes(cmd.Context(), !all)
+				if err != nil {
+					if mode == outputJSON {
+						return failJSON(cmd, err)
+					}
+					return err
+				}
+				views = wire.NewMuteList(rows)
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindMuteList, wire.NewMuteList(rows))
+				return emitJSON(cmd, wire.KindMuteList, views)
 			}
-			out := cmd.OutOrStdout()
-			if len(rows) == 0 {
-				if all {
-					_, _ = fmt.Fprintln(out, "no mutes")
-				} else {
-					_, _ = fmt.Fprintln(out, "no active mutes")
-				}
-				return nil
+			rows := make([]holdRow, 0, len(views))
+			for _, v := range views {
+				rows = append(rows, holdRow{v.ID, muteLabel(v.ScopeKind, v.ScopeValue), wireTime(v.ExpiresAt),
+					v.CreatedVia, v.Reason})
 			}
-
-			now := time.Now().UTC()
-			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "ID\tSCOPE\tEXPIRES\tLEFT\tVIA\tREASON")
-			for _, m := range rows {
-				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n",
-					m.ID, muteLabel(m), m.ExpiresAt.Format("2006-01-02 15:04:05Z"),
-					leftLabel(m.ExpiresAt, now), viaLabel(m.CreatedVia), m.Reason)
-			}
-			return w.Flush()
+			return printHoldTable(cmd, rows, "mute", all)
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "include mutes that have already expired")
@@ -183,6 +192,12 @@ func newMuteRmCmd() *cobra.Command {
 				return fmt.Errorf("mute rm: %q is not a mute id", args[0])
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteMuteRm(cmd, rc, id)
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -195,8 +210,8 @@ func newMuteRmCmd() *cobra.Command {
 				}
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "mute %d lifted\n", id)
-			return err
+			printMuteLifted(cmd, id)
+			return nil
 		},
 	}
 }
