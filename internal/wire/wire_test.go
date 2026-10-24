@@ -119,6 +119,37 @@ func TestGoldenSourceEgressDefault(t *testing.T) {
 	}
 }
 
+// TestGoldenSourceRunSecretsDefault pins the additive default_run_secrets field
+// on a source view (Decision 0024): the binding name appears only when the
+// operator set one, and its absence leaves the pre-existing bytes unchanged.
+func TestGoldenSourceRunSecretsDefault(t *testing.T) {
+	src := store.Source{
+		ID:                7,
+		Name:              "tree",
+		Kind:              "path",
+		Enabled:           true,
+		DefaultRunSecrets: "tree-vault",
+		CreatedAt:         at("2026-01-02T03:04:05Z"),
+	}
+	got, err := wire.MarshalSuccess(wire.KindSourceList, wire.NewSourceList([]store.Source{src}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"schema_version":1,"kind":"source.list","data":[{"id":7,"name":"tree","kind":"path","enabled":true,"default_run_secrets":"tree-vault","created_at":"2026-01-02T03:04:05Z"}]}` + "\n"
+	if string(got) != want {
+		t.Fatalf("source run-secrets default bytes drift:\n got: %s\nwant: %s", got, want)
+	}
+
+	src.DefaultRunSecrets = ""
+	got, err = wire.MarshalSuccess(wire.KindSourceList, wire.NewSourceList([]store.Source{src}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "default_run_secrets") {
+		t.Fatalf("source without a default must omit default_run_secrets: %s", got)
+	}
+}
+
 func TestGoldenEmptyList(t *testing.T) {
 	got, err := wire.MarshalSuccess(wire.KindJobList, wire.NewJobList(nil))
 	if err != nil {
