@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-10-24
 
+- **The CLI follows its default remote.** [Decision 0026](decisions/0026-remote-first-cli.md)
+  records that a `hosts.toml` default sends every command to that daemon and `--local` opts
+  out. [Driving a remote daemon](operations/remote-access.md) gains the commands that stay
+  local and a section for a machine that only drives a remote daemon; the [CLI
+  reference](reference/cli.md) lists `--local`.
 - **Scheduled play from a source.** [Decision 0025](decisions/0025-scheduled-play-source.md)
   lets a play schedule name a registered source, so a fire runs from its checkout and inherits
   its default egress and run-secret binding. [Sources](operations/sources.md#scheduled-plays-from-a-source),

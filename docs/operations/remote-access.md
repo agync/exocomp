@@ -1,7 +1,7 @@
 ---
 type: Guide
 title: "Driving a remote daemon"
-description: "Login and the remote flag: certificate pinning, precedence, pinned reads, writes that enqueue on the other box, following a job live, and the inputs that do not cross the wire."
+description: "Login, the default remote and --local: certificate pinning, precedence, pinned reads, writes that enqueue on the other box, the commands that stay local, following a job live, and the inputs that do not cross the wire."
 status: stable
 tags: [operations, remote, cli]
 ---
@@ -9,8 +9,9 @@ tags: [operations, remote, cli]
 # Driving a remote daemon
 
 `exocomp login` pins a remote daemon's certificate and a bearer token so the same CLI can
-drive a box other than the one it runs on. `--remote` then points any command at that box's
-`/api/v1` instead of the local data dir. Reads render the daemon's own projections; writes
+drive a box other than the one it runs on. The remote the first `login` records becomes the
+default, and from then on commands go to that box's `/api/v1` instead of the local data dir;
+`--remote` names another pinned box, and `--local` keeps one command on this machine. Reads render the daemon's own projections; writes
 enqueue there and the job can be followed live. The transport is the [Decision 0009](../decisions/0009-lan-access-tokens.md)
 TLS listener ([LAN access](lan-access.md)) with the certificate pinned trust-on-first-use.
 
@@ -50,27 +51,29 @@ first; a refusal exits non-zero and leaves `hosts.toml` untouched.
 
 ## Selecting a remote: flags, env, precedence
 
-Every command inherits two global flags plus the token flag:
+Every command inherits `--remote`, `--local` and `--token`. The first match decides where a
+command goes ([Decision 0026](../decisions/0026-remote-first-cli.md)):
 
-| Input | Precedence |
+| Input | Where the command goes |
 |---|---|
-| `--remote <selector>` | wins over the environment |
-| `EXOCOMP_REMOTE` | used when `--remote` is not passed |
-| neither | the command stays **local**, against the data dir, unchanged |
-| `--remote=` (empty value) | remote mode is active; resolves to the `hosts.toml` default |
+| `--local` | this machine's data dir, whatever else is configured; with `--remote` it is an error |
+| `--remote <selector>` | that remote; `--remote=` (empty value) is the `hosts.toml` default |
+| `EXOCOMP_REMOTE` | that remote, when set and not empty |
+| the `hosts.toml` default | that remote, with no flag at all |
+| none of these | this machine's data dir |
 
 `<selector>` is either a stored alias (`server`) or a raw `https://` endpoint pinned under
 some alias by an earlier `login` — an endpoint that was never logged in is refused (TOFU
-demands the pin exist first). The `hosts.toml` default is consulted **only** once remote mode
-is already active (via `--remote`/`EXOCOMP_REMOTE`); a bare command with neither never gets
-silently redirected off the box, even when a default remote is stored.
+demands the pin exist first). The first `login` makes its remote the default unless
+`--no-default` is passed, so from then on every command goes there. `--local` is the one way
+to act on this machine's data dir while a default is stored; an empty `EXOCOMP_REMOTE` counts
+as unset. A `hosts.toml` that cannot be read fails the command with an error naming
+`--local`, rather than guessing.
 
-A bare `playbook run`, or `workspace plan`, `apply` or `destroy`, runs the job on the machine
-the command runs on. When a default remote is stored it says so on stderr first:
-
-```text
-running on this machine, not on the default remote "server" (pass --remote= to run there)
-```
+A `hosts.toml` written by an earlier version may already name a default, set by the first
+`login` when a default only filled a valueless `--remote=`. It now applies to every command.
+On a host that should stay local, such as a daemon host that logged in to itself for
+`--remote self drain`, remove the `default` line, or log in with `--no-default`.
 
 The bearer token resolves the same way `login` resolves it: `--token` flag → `EXOCOMP_TOKEN`
 → the token `login` stored for that alias. `--token`/`EXOCOMP_TOKEN` let one invocation use a
@@ -126,14 +129,37 @@ rather than a stream of per-event envelopes. A followed `command` or `ansible` e
 `command.result` document a local run prints, built from the daemon's job and its events, and
 a gated one emits the approval.
 
-Every command not listed above runs against the local data dir and has no remote path:
-`source add`/`rm`/`sync`/`egress`, `inventory`, `run-secret`, `schedule`, `rule`, `secrets`,
-`token`, `runner`, `backup`, and the rest. With `--remote` or `EXOCOMP_REMOTE` set, such a
-command refuses with an error naming the missing support instead of writing to the local
-store; under `--output json` the refusal is a `wire` error envelope with code
-`remote_unsupported`. Unset both to run it on
-this machine. `version`, `commands`, `login`, `help`, `completion`, `hooks validate`, `serve`,
-`ssh-serve`, `setup` and `upgrade` run on this machine by nature and ignore the selection.
+## Commands that do not go to the remote
+
+With a remote selected, a command not listed above refuses before it opens any data dir,
+instead of writing to a store the daemon never reads; under `--output json` the refusal is a
+`wire` error envelope with code `remote_unsupported`. [Decision 0026](../decisions/0026-remote-first-cli.md) sorts every
+command into one set:
+
+| Set | With a remote selected | Commands |
+|---|---|---|
+| Exempt | runs on this machine and ignores the selection | `version`, `help`, `completion`, `commands`, `login`, `hooks validate`, `serve`, `scheduler run`, `web`, `ssh-serve`, `setup`, `upgrade`, `rollback`, `restore`, `sandbox-canary` |
+| Local-only | refused; run it on the daemon's host with `--local` | `init`, `identity migrate`, `seal`, `kit derive`, `kit verify`, `recovery-kit`, `backup drill`, `jobs redrive`, `token`, `workspace token`, `workspace backend`, `workspace adopt`, `litestream`, `tui`, `approval link` |
+| Pending | refused until its API route exists; `--local` runs it against this machine's data dir | every other command |
+
+The local-only commands need the host's keys, act on what a restart of the host left, or would
+carry a credential over the API. The decision record gives the reason for each.
+
+## A machine that only drives a remote daemon
+
+When the daemon runs elsewhere, a container with its own volume or another host, the CLI on
+this machine needs no data dir of its own:
+
+```
+exocomp login server.tailnet.ts.net:8443 --token exo_...
+exocomp doctor
+exocomp command --source infra --host web -- uptime
+```
+
+After the `login`, `doctor` reports the daemon's health and `command` runs on the daemon from
+the `infra` checkout there. A pending or local-only command refuses instead of creating a
+local store. On the daemon's own host, an operator whose `hosts.toml` names a default runs a
+local-only command with `--local`, for example `exocomp --local token list`.
 
 ## What does not cross the wire
 

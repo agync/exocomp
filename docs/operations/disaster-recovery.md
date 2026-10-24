@@ -213,6 +213,9 @@ exocomp kit derive --list                        # every purpose:id the store kn
 exocomp kit derive restic/nas --identity recovery.key --keyring ./keyring.age
 ```
 
+On a machine whose `hosts.toml` names a default remote, add `--local`: `kit` reads this
+machine's keyring and store, never the remote's.
+
 `exocomp kit verify --page kit.txt` re-renders the kit as it stands now and compares it
 with a printed page: a page that no longer hashes to the digest it prints was edited, and
 a page that no longer matches the current kit needs reprinting. The card asks for this
