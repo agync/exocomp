@@ -111,7 +111,6 @@ func newPlaybookCmd() *cobra.Command {
 				return errors.New("playbook run: --no-follow applies to a --remote run; " +
 					"a local run drains or follows the job it enqueues")
 			}
-			noteLocalRun(cmd)
 
 			passthrough, vars, err := ansiblePassthrough(limit, tags, skipTags, check, diff, extraVars)
 			if err != nil {

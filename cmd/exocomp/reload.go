@@ -22,7 +22,7 @@ func newReloadCmd() *cobra.Command {
 			"enabled, or disabled through the CLI takes effect without a restart. " +
 			"A reload that cannot read the database leaves the running set alone.\n\n" +
 			"reload controls a RUNNING daemon over the operator API, so it needs a selected " +
-			"remote (--remote or EXOCOMP_REMOTE) — the control node targets its own daemon.",
+			"remote (--remote, EXOCOMP_REMOTE, or the hosts.toml default) — the control node targets its own daemon.",
 		Example: "exocomp --remote self reload",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -49,7 +49,7 @@ func runReload(cmd *cobra.Command) error {
 		return err
 	}
 	if !remote {
-		return errors.New("reload controls a running daemon; select it with --remote (or EXOCOMP_REMOTE)")
+		return errors.New("reload controls a running daemon; select it with --remote, EXOCOMP_REMOTE, or a default from `exocomp login`")
 	}
 
 	view, err := rc.Reload(cmd.Context())
