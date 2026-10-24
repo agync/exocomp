@@ -32,12 +32,15 @@ type ruleRow struct {
 	// shell argv, "log only · no action, no guards" for a notify rule, or a
 	// tofu workspace verb.
 	Action string
-	// Guards are the 20px surface-control words (SPEC §5.3): egress {ports}
-	// and cooldown {d} in surface-control ink, and Gate — "gate approval · TTL
+	// Guards are the 20px surface-control words (SPEC §5.3): egress {ports},
+	// secrets {binding} and cooldown {d} in surface-control ink, and Gate — "gate approval · TTL
 	// {d}" — in wait-tint (the one guard that stops the run). Empty = absent.
 	Egress   string
 	Cooldown string
 	Gate     string
+	// RunSecrets is "secrets {binding}": the run-secret binding the rule's runs
+	// inherit from their source's default (Decision 0024). Empty = absent.
+	RunSecrets string
 	// Expr is the CEL expression, verbatim.
 	Expr string
 	// LastFire/FireFact are the ledger's newest fire: the clock and the outcome
@@ -58,7 +61,7 @@ func (r ruleRow) LastFireAtISO() string {
 // HasGuards reports whether line two carries any guard word, so the template
 // can draw the separator before the guard cluster.
 func (r ruleRow) HasGuards() bool {
-	return r.Egress != "" || r.Cooldown != "" || r.Gate != ""
+	return r.Egress != "" || r.RunSecrets != "" || r.Cooldown != "" || r.Gate != ""
 }
 
 func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
@@ -84,8 +87,9 @@ func (s *Server) rules(r *http.Request) ([]ruleRow, error) {
 		return nil, err
 	}
 	// One source lookup per distinct source, not per rule: the effective egress
-	// of every playbook rule that names the same source resolves once.
-	defaults := map[string][]int{}
+	// and run-secrets of every playbook rule that names the same source resolve
+	// once.
+	defaults := map[string]sourceDefaults{}
 	out := make([]ruleRow, 0, len(list))
 	for _, rl := range list {
 		row := ruleRow{
@@ -107,6 +111,13 @@ func (s *Server) rules(r *http.Request) ([]ruleRow, error) {
 			if len(ports) > 0 {
 				row.Egress = "egress " + joinPorts(ports, ", ")
 			}
+			def, derr := s.ruleSourceDefaults(r.Context(), rl, defaults)
+			if derr != nil {
+				return nil, derr
+			}
+			if def.runSecrets != "" {
+				row.RunSecrets = "secrets " + def.runSecrets
+			}
 		}
 		if fire, ferr := s.store.LastRuleFire(r.Context(), rl.ID); ferr == nil {
 			row.LastFire = fire.Ts.Local().Format("15:04:05")
@@ -122,38 +133,58 @@ func (s *Server) rules(r *http.Request) ([]ruleRow, error) {
 	return out, nil
 }
 
-// ruleEffectiveEgress is the port set a rule's runs may open: the rule's
-// declared ports unioned with the default set of the source it names. It
-// mirrors Queue.withSourceEgress — the admission authority this display must
-// match, or the page would understate an unattended run's reach (Decision
-// 0023) — exactly: only a playbook rule with a non-empty Action.Source is
-// widened; the union is additive and de-duplicated; a missing source is a
-// no-op, never an error and never a substitution for another source; a rule
-// that declares nothing keeps exactly the source's default.
+// sourceDefaults is the operator-set part of a source a rule's runs inherit at
+// queue admission: the default egress set (Decision 0023) and the default
+// run-secret binding (Decision 0024).
+type sourceDefaults struct {
+	egress     []int
+	runSecrets string
+}
+
+// ruleSourceDefaults reads the defaults of the source a playbook rule names,
+// mirroring ApplySourceDefaults — the admission authority this display must
+// match, or the page would understate an unattended run's reach: only a
+// playbook rule with a non-empty Action.Source inherits, and a missing source
+// is a zero value, never an error and never a substitution for another source.
 //
-// defaults caches one lookup per distinct source across a page render, and a
-// source that no longer exists caches as nil so a fleet of rules naming it
+// cache holds one lookup per distinct source across a page render, and a source
+// that no longer exists caches as the zero value so a fleet of rules naming it
 // does not repeat the miss.
-func (s *Server) ruleEffectiveEgress(ctx context.Context, rl store.Rule, defaults map[string][]int) ([]int, error) {
+func (s *Server) ruleSourceDefaults(ctx context.Context, rl store.Rule, cache map[string]sourceDefaults) (sourceDefaults, error) {
+	if rl.ActionKind != store.ActionPlaybook || rl.Action.Source == "" {
+		return sourceDefaults{}, nil
+	}
+	if def, seen := cache[rl.Action.Source]; seen {
+		return def, nil
+	}
+	var def sourceDefaults
+	src, err := s.store.SourceByName(ctx, rl.Action.Source)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+	case err != nil:
+		return sourceDefaults{}, err
+	default:
+		def = sourceDefaults{egress: src.ExtraEgressPorts, runSecrets: src.DefaultRunSecrets}
+	}
+	cache[rl.Action.Source] = def
+	return def, nil
+}
+
+// ruleEffectiveEgress is the port set a rule's runs may open: the rule's
+// declared ports unioned with the default set of the source it names. The union
+// is additive and de-duplicated, and a rule that declares nothing keeps exactly
+// the source's default.
+func (s *Server) ruleEffectiveEgress(ctx context.Context, rl store.Rule, cache map[string]sourceDefaults) ([]int, error) {
+	def, err := s.ruleSourceDefaults(ctx, rl, cache)
+	if err != nil {
+		return nil, err
+	}
 	if rl.ActionKind != store.ActionPlaybook || rl.Action.Source == "" {
 		return rl.Action.Egress, nil
 	}
-	def, seen := defaults[rl.Action.Source]
-	if !seen {
-		src, err := s.store.SourceByName(ctx, rl.Action.Source)
-		switch {
-		case errors.Is(err, store.ErrNotFound):
-			def = nil
-		case err != nil:
-			return nil, err
-		default:
-			def = src.ExtraEgressPorts
-		}
-		defaults[rl.Action.Source] = def
-	}
-	merged := make([]int, 0, len(rl.Action.Egress)+len(def))
+	merged := make([]int, 0, len(rl.Action.Egress)+len(def.egress))
 	merged = append(merged, rl.Action.Egress...)
-	merged = append(merged, def...)
+	merged = append(merged, def.egress...)
 	return store.NormalizeEgressPorts(merged)
 }
 
