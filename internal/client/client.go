@@ -182,10 +182,14 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 }
 
 // decodeEnvelope turns one response into the success envelope's kind and data,
-// or a typed error. A wire error envelope keeps its taxonomy code; a non-2xx
-// that is not an envelope at all (a proxy page, a bare 404) folds its status
-// into the closest code so exit codes stay meaningful.
+// or a typed error. A 204 has no envelope and yields an empty kind. A wire
+// error envelope keeps its taxonomy code; a non-2xx that is not an envelope at
+// all (a proxy page, a bare 404) folds its status into the closest code so exit
+// codes stay meaningful.
 func decodeEnvelope(status int, raw []byte) (string, json.RawMessage, error) {
+	if status == http.StatusNoContent {
+		return "", nil, nil
+	}
 	var env struct {
 		SchemaVersion int             `json:"schema_version"`
 		Kind          string          `json:"kind"`
