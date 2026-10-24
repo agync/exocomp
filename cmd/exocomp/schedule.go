@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/sched"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -42,6 +43,7 @@ func newScheduleAddCmd() *cobra.Command {
 		jitter         int
 		check          bool
 		tolerateUnre   bool
+		sourceName     string
 	)
 
 	cmd := &cobra.Command{
@@ -53,11 +55,15 @@ func newScheduleAddCmd() *cobra.Command {
 			"(everything after --, the playbook first) against the standing inventory " +
 			"--target names — `tf:<workspace>` for the inventory a workspace's apply " +
 			"refreshes, so a newly provisioned host joins the next fire. A play whose " +
-			"inventory is missing, stale, or hostless enqueues nothing. A play fire names no " +
-			"source, so it does not inherit a source's default run-secrets binding " +
-			"(`exocomp source run-secrets`) and derives no vault password; a play against " +
-			"a source tree with encrypted vars belongs in a playbook rule, which inherits the " +
-			"source default.\n\n" +
+			"inventory is missing, stale, or hostless enqueues nothing. With --source the " +
+			"playbook is relative to that registered source's checkout, the play runs from " +
+			"it (so its ansible.cfg loads), and every fire inherits the source's default " +
+			"egress ports (`exocomp source egress`) and run-secrets binding " +
+			"(`exocomp source run-secrets`). The inventory is still the standing one --target " +
+			"names, so group_vars beside the checkout's own inventory are not read, and a " +
+			"schedule has no vault project. Without --source a play fire names no " +
+			"source, uses the playbook path as given, and inherits neither. A source with " +
+			"lifecycle hooks is refused, as for a playbook rule.\n\n" +
 			"Kind play with --check is the config-drift schedule: it fires the play in " +
 			"ansible check mode (--check --diff) on the cron, so every fire emits the " +
 			"structured 'would change' outcome as a job event without touching a host " +
@@ -81,6 +87,9 @@ func newScheduleAddCmd() *cobra.Command {
 			}
 			if tolerateUnre && kind != sched.KindPlay {
 				return errors.New("schedule add: --tolerate-unreachable applies to kind play")
+			}
+			if sourceName != "" && kind != sched.KindPlay {
+				return errors.New("schedule add: --source applies to kind play")
 			}
 
 			var scheduleArgs store.ScheduleArgs
@@ -111,6 +120,7 @@ func newScheduleAddCmd() *cobra.Command {
 				}
 				scheduleArgs.Argv = argv
 				scheduleArgs.Target = target
+				scheduleArgs.Source = sourceName
 				scheduleArgs.TolerateUnreachable = tolerateUnre
 				if check {
 					// The config-drift schedule: --check --diff go after the
@@ -149,6 +159,21 @@ func newScheduleAddCmd() *cobra.Command {
 			}
 			defer func() { _ = st.Close() }()
 
+			if sourceName != "" {
+				// The resolution a fire runs, so a schedule that could never fire
+				// (no such source, a hooked one, a playbook that is absolute or
+				// escapes the checkout) is refused now rather than logged at
+				// every fire, as `rule add` does for a playbook rule.
+				dir, err := dataDir()
+				if err != nil {
+					return fmt.Errorf("schedule add: resolve data dir: %w", err)
+				}
+				if _, _, _, err := service.New(st, dir, nil).ResolvePlainSourcePlay(
+					cmd.Context(), sourceName, scheduleArgs.Argv[0]); err != nil {
+					return fmt.Errorf("schedule add: %w", err)
+				}
+			}
+
 			created, err := st.CreateSchedule(cmd.Context(), store.NewSchedule{
 				Name:           name,
 				CronExpr:       cronExpr,
@@ -174,6 +199,7 @@ func newScheduleAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&target, "target", "", "backup/drill kind: target name (empty: every enabled target); play kind: standing inventory name")
 	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "", "shell/play kinds: serialize against jobs sharing this key")
 	cmd.Flags().IntVar(&jitter, "jitter", 0, "sleep a random number of seconds up to this before enqueueing")
+	cmd.Flags().StringVar(&sourceName, "source", "", "play kind: run from this registered source's checkout; the playbook is relative to it and the fire inherits the source's default egress and run-secrets")
 	cmd.Flags().BoolVar(&check, "check", false, "play kind: run in ansible check mode (--check --diff) as the config-drift schedule")
 	cmd.Flags().BoolVar(&tolerateUnre, "tolerate-unreachable", false, "play kind: a fire whose only non-success is unreachable hosts settles degraded, not failed (a roaming host asleep does not page)")
 	_ = cmd.MarkFlagRequired("cron")
