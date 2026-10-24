@@ -36,7 +36,7 @@ func newSourceCmd() *cobra.Command {
 		Use:   "source",
 		Short: "Register and sync the git repos and paths runs execute from (Decision 0010)",
 	}
-	cmd.AddCommand(newSourceAddCmd(), newSourceListCmd(), newSourceSyncCmd(), newSourceRmCmd(), newSourceEgressCmd())
+	cmd.AddCommand(newSourceAddCmd(), newSourceListCmd(), newSourceSyncCmd(), newSourceRmCmd(), newSourceEgressCmd(), newSourceRunSecretsCmd())
 	return cmd
 }
 
@@ -516,6 +516,70 @@ func runSourceEgress(cmd *cobra.Command, name string, portArgs []string) (err er
 	_, err = fmt.Fprintf(cmd.OutOrStdout(),
 		"source %s default egress ports: %v (any host on these ports)\n",
 		updated.Name, updated.ExtraEgressPorts)
+	return err
+}
+
+func newSourceRunSecretsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "run-secrets <name> [binding]",
+		Short: "Set the default run-secret binding a source's ansible runs inherit",
+		Long: "Records a run-secret binding that every ansible run naming this source " +
+			"(a manual playbook run, an ad-hoc command, a rule-fired playbook) injects as " +
+			"env unless the run passes its own --run-secrets, which wins. With no binding " +
+			"it clears the default. The binding must already hold at least one pair " +
+			"(`exocomp run-secret add`). Only the binding name is stored; the sealed values " +
+			"are resolved from the envelope when the run starts. Use it when the source's " +
+			"tree needs credentials on every run, such as the env var an encrypted " +
+			"group_vars tree reads its vault password from. A scheduled, handoff or " +
+			"bootstrap play names no source and does not inherit it. --vault-project stays per run and is not " +
+			"defaulted (docs/operations/sources.md).",
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			binding := ""
+			if len(args) == 2 {
+				binding = args[1]
+			}
+			return runSourceRunSecrets(cmd, args[0], binding)
+		},
+	}
+}
+
+func runSourceRunSecrets(cmd *cobra.Command, name, binding string) (err error) {
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := st.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	ctx := cmd.Context()
+	src, err := st.SourceByName(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("source run-secrets: no source %q", name)
+	}
+	if err != nil {
+		return err
+	}
+
+	updated, err := st.SetSourceRunSecrets(ctx, src.ID, binding)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("source run-secrets: binding %q has no pairs (add one with `exocomp run-secret add`)", binding)
+	}
+	if err != nil {
+		return err
+	}
+
+	if updated.DefaultRunSecrets == "" {
+		_, err = fmt.Fprintf(cmd.OutOrStdout(),
+			"source %s default run-secrets: none (a run injects only the binding it names)\n", updated.Name)
+		return err
+	}
+	_, err = fmt.Fprintf(cmd.OutOrStdout(),
+		"source %s default run-secrets: %s (every run of this source, unless it names its own)\n",
+		updated.Name, updated.DefaultRunSecrets)
 	return err
 }
 
