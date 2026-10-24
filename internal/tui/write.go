@@ -455,10 +455,11 @@ func planNowCmd(st *store.Store, w *Write, ws store.Workspace) tea.Cmd {
 // not consume the schedule's own occurrence. A schedule that builds no spec
 // (e.g. a backup schedule with no enabled target) flashes the empty result
 // rather than reporting a queued job that does not exist.
-func runScheduleNowCmd(st *store.Store, sc store.Schedule) tea.Cmd {
+func runScheduleNowCmd(st *store.Store, w *Write, sc store.Schedule) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		specs, err := sched.Specs(ctx, st, nil, sc, service.TriggerTUI)
+		resolve := service.New(st, w.DataDir, nil).ResolvePlainSourcePlay
+		specs, err := sched.Specs(ctx, st, nil, sc, service.TriggerTUI, resolve)
 		if err != nil {
 			return writeDoneMsg{screen: screenSchedules, text: "schedule: " + err.Error()}
 		}
@@ -761,7 +762,7 @@ func (m Model) runSelectedSchedule() (tea.Model, tea.Cmd) {
 	if idx < 0 || idx >= len(m.schedules) {
 		return m, nil
 	}
-	return m, runScheduleNowCmd(m.store, m.schedules[idx])
+	return m, runScheduleNowCmd(m.store, m.write, m.schedules[idx])
 }
 
 func (m Model) toggleSelectedSchedule() (tea.Model, tea.Cmd) {

@@ -1022,3 +1022,51 @@ func TestGAndGMoveTheCursorToTopAndBottom(t *testing.T) {
 		t.Fatalf("cursor = %d after g, want the first row", m.jobsTable.model.Cursor())
 	}
 }
+
+// TestRunScheduleNowFromSource: x on a play schedule that names a source builds
+// the spec a fire does, resolving the source against the TUI's data directory,
+// so the queued job runs from the checkout and carries the source's default
+// egress.
+func TestRunScheduleNowFromSource(t *testing.T) {
+	st := openTestStore(t)
+	w, _ := newTestWrite(t)
+	ctx := context.Background()
+
+	invPath := filepath.Join(t.TempDir(), "edge.json")
+	if err := os.WriteFile(invPath, []byte(`{"all":{"hosts":{"edge1":{"ansible_host":"10.0.0.1"}}}}`), 0o600); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+	if _, err := st.MaterializeInventory(ctx, "tf:edge", invPath); err != nil {
+		t.Fatalf("materialize inventory: %v", err)
+	}
+	checkout := t.TempDir()
+	src, err := st.CreateSource(ctx, store.Source{Name: "infra", Kind: store.SourcePath, URI: checkout, Enabled: true})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	if _, err := st.SetSourceEgressPorts(ctx, src.ID, []int{443}); err != nil {
+		t.Fatalf("set egress: %v", err)
+	}
+	sc, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name: "converge", CronExpr: "@daily", Kind: "play",
+		Args: store.ScheduleArgs{Argv: []string{"site.yml"}, Target: "tf:edge", Source: "infra"},
+	})
+	if err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+
+	msg := runScheduleNowCmd(st, w, sc)()
+	if done, ok := msg.(writeDoneMsg); !ok || !strings.Contains(done.text, "queued converge") {
+		t.Fatalf("run now = %#v, want a queued confirmation", msg)
+	}
+	job := jobOfKind(listJobs(t, st), executor.KindAnsible)
+	if job == nil {
+		t.Fatal("run now enqueued no ansible job")
+	}
+	if job.Args.Source != "infra" || job.Args.Dir != checkout {
+		t.Errorf("job source/dir = %q/%q, want infra and %q", job.Args.Source, job.Args.Dir, checkout)
+	}
+	if len(job.Args.EgressPorts) != 1 || job.Args.EgressPorts[0] != 443 {
+		t.Errorf("job egress = %v, want the source default [443]", job.Args.EgressPorts)
+	}
+}

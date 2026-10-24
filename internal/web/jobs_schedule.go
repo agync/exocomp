@@ -14,8 +14,8 @@ import (
 // the operator retyping its command. The created schedule's kind is always
 // "shell": it replays the job's own stored Argv, byte for byte, through the
 // shell driver's direct exec — never the ansible driver's sandbox, vault, or
-// run-secrets machinery a playbook/command job used, since store.ScheduleArgs
-// (internal/store/schedule.go) carries none of that. A job that ran against a
+// run-secrets machinery a playbook/command job used, since a shell schedule's
+// store.ScheduleArgs (internal/store/schedule.go) carries none of that. A job that ran against a
 // --source working directory (Args.Dir set) has nowhere for a shell schedule
 // to put it, so scheduling that job is refused rather than silently dropping
 // where it ran. Schedules carry no secret material (schedules_write.go's own

@@ -269,7 +269,7 @@ func TestSpecsMatchesFireBuild(t *testing.T) {
 		if err != nil {
 			t.Fatalf("buildSpecs(%s): %v", sc.Name, err)
 		}
-		direct, err := Specs(t.Context(), st, testLogger(), sc, Trigger)
+		direct, err := Specs(t.Context(), st, testLogger(), sc, Trigger, nil)
 		if err != nil {
 			t.Fatalf("Specs(%s): %v", sc.Name, err)
 		}
@@ -279,7 +279,7 @@ func TestSpecsMatchesFireBuild(t *testing.T) {
 
 		// The caller's trigger must replace the fire's on every kind, shell
 		// included: a manual run-now is not a cron fire.
-		manual, err := Specs(t.Context(), st, testLogger(), sc, "run-now")
+		manual, err := Specs(t.Context(), st, testLogger(), sc, "run-now", nil)
 		if err != nil {
 			t.Fatalf("Specs(%s, run-now): %v", sc.Name, err)
 		}
