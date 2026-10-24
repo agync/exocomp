@@ -121,3 +121,20 @@ Open `https://127.0.0.1:8642` to view the attention-first dashboard:
 <p><img src="../design/assets/web/1a-shell-dashboard.png" alt="exocomp web dashboard"></p>
 
 The dashboard presents the system status before detail: active alerts, pending approval gates, backup freshness, and running queue jobs.
+
+## 6. Drive it from another machine
+
+The same binary on a laptop drives the daemon over its LAN listener. Bind `--web-addr` to an
+address the laptop can reach ([LAN access](../operations/lan-access.md)), mint an `operator`
+token on the daemon's host, then pin the daemon from the laptop:
+
+```bash
+exocomp token new laptop --scope operator --expires 720h   # on the daemon's host (--local if it has a default remote)
+exocomp login server.tailnet.ts.net:8642 --token exo_...   # on the laptop
+exocomp doctor
+```
+
+The first `login` makes that daemon the default remote, so every command on the laptop goes
+there without a flag, and the laptop keeps no data dir of its own. A command that has to run
+where the daemon's data dir is, such as `token new` or `init`, refuses and names `--local`. Run
+it on the daemon's host. See [Driving a remote daemon](../operations/remote-access.md).

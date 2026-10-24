@@ -209,10 +209,10 @@ EXOCOMP_REMOTE=server EXOCOMP_TOKEN=… EXOCOMP_OUTPUT=json exocomp workspace pl
 exocomp --remote server approval decide 42 --approve
 ```
 
-- Config precedence: `--remote` flag → `EXOCOMP_REMOTE` → a valueless `--remote` fills from the
-  `~/.config/exocomp/hosts.toml` default. Token from `--token` → `EXOCOMP_TOKEN` → the host
-  entry. A bare `exocomp <cmd>` with neither flag nor env stays local against the data dir
-  (unchanged), so nothing an operator on `server` does today breaks. The selector is `--remote`,
+- Config precedence: `--local` → `--remote` flag → `EXOCOMP_REMOTE` → the
+  `~/.config/exocomp/hosts.toml` default, which a bare `exocomp <cmd>` follows too ([Decision
+  0026](../decisions/0026-remote-first-cli.md)). Token from `--token` → `EXOCOMP_TOKEN` → the
+  host entry. With no default stored, a bare command stays local against the data dir. The selector is `--remote`,
   not `--host`: `--host` is already the ansible target pattern (`exocomp command --host …`), so
   reusing it for the daemon would collide.
 - `internal/client` is the typed HTTP client (the `api/` "monorepo seam" package the layout
