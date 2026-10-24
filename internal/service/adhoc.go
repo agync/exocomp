@@ -52,6 +52,11 @@ type AdhocInput struct {
 	// is operator-gated at the calling face; the verb only carries it onto the
 	// spec and records the escalation. Off by default is normal tiering.
 	Privileged bool
+	// SSHIdentityFiles are single ssh identity key files the run may read. This
+	// verb trusts the paths it is given; a face whose caller names paths on a
+	// host it does not control checks them against serve --allow-ssh-identity
+	// first, as POST /api/v1/adhoc/run does.
+	SSHIdentityFiles []string
 	// Actor identifies a non-CLI caller (an API/web token) for the job's event
 	// ledger; the zero value records nothing (see recordActor).
 	Actor Actor
@@ -162,6 +167,7 @@ func (s *Service) RunAdhoc(ctx context.Context, enq Enqueuer, deriver reactive.D
 		IdempotencyKey:      in.IdempotencyKey,
 		Timeout:             in.Timeout,
 		Privileged:          in.Privileged,
+		SSHIdentityFiles:    in.SSHIdentityFiles,
 	}
 
 	if in.RequireApproval {
