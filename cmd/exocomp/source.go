@@ -530,8 +530,9 @@ func newSourceRunSecretsCmd() *cobra.Command {
 			"(`exocomp run-secret add`). Only the binding name is stored; the sealed values " +
 			"are resolved from the envelope when the run starts. Use it when the source's " +
 			"tree needs credentials on every run, such as the env var an encrypted " +
-			"group_vars tree reads its vault password from. A scheduled, handoff or " +
-			"bootstrap play names no source and does not inherit it. --vault-project stays per run and is not " +
+			"group_vars tree reads its vault password from. A scheduled play inherits it when " +
+			"the schedule names the source (`schedule add --source`); a handoff or " +
+			"bootstrap play names no source on its play step and does not. --vault-project stays per run and is not " +
 			"defaulted (docs/operations/sources.md).",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
