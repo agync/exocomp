@@ -41,6 +41,7 @@ These flags apply across all CLI commands:
 
 ### State & Secrets
 - `exocomp source add/list/sync/rm`: Manage registered Git and local sources.
+- `exocomp source run-secrets <name> [binding]`: Set the default run-secret binding a source's ansible runs inherit; an explicit `--run-secrets` wins.
 - `exocomp secrets add/list/replace/rm`: Manage age secrets envelope entries.
 - `exocomp run-secret add/list/rm`: Bind sealed secrets to named environment sets for runs.
 - `exocomp host onboard/known-hosts`: Onboard fleet nodes and inspect trusted host keys.

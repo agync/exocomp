@@ -81,6 +81,37 @@ page — an **Egress ports** line, and, for an operator, a form POSTing to
 Like every egress grant, it is **a port, not a destination**: the sandbox filters by port,
 so a granted port is reachable to any host, not only the intended one.
 
+## Source-scoped run-secrets default
+
+A git source has no untracked vault password file, so a tree with encrypted vars decrypts
+only when the password reaches ansible as an env var through a run-secret binding. Record
+the binding on the source instead of passing `--run-secrets` on every run
+([Decision 0024](../decisions/0024-source-run-secrets-default.md)):
+
+```
+exocomp run-secret add tree-vault VAULT_PASSWORD tree-vault-pass
+exocomp source run-secrets homelab tree-vault
+```
+
+`source run-secrets <name> [binding]` sets the source's default binding, replacing any
+previous one; with no binding it clears the default. The binding must already hold at least
+one pair. Every ansible run that names the source inherits it at queue admission — a manual
+`playbook run`, `ansible`, `command`, a rule-fired playbook, an API run — unless the
+run passes its own `--run-secrets`, which wins; the two are never merged. The job row
+records the effective binding, so the job detail shows what the run received.
+
+Only the binding name is stored; the sealed values are resolved from the envelope when the
+run starts. The default is **operator-set through the daemon only**: nothing a repo declares
+chooses a binding. It is visible on the source's detail page — a **Run-secrets** line, and,
+for an operator, a form POSTing to `/sources/{name}/run-secrets` — and the rules page shows
+a `secrets <binding>` guard on each playbook rule whose source has one.
+
+`--vault-project` is not defaulted. It derives a password from the envelope for a named
+project and stays a per-run argument; it composes with an inherited binding when both are
+set. A scheduled play, a handoff play and a bootstrap play name no source and do not inherit
+the default; run a play against a source tree with encrypted vars from a playbook rule.
+`run-secret rm` refuses a binding a source names as its default.
+
 ## The credential plane — sealed secrets as run env
 
 A dynamic-inventory plugin or an OpenTofu provider authenticates from environment

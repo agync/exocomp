@@ -29,6 +29,7 @@ of fact land in [the evolution log](../log.md).
 | [0021](0021-host-request-polling.md) | Keep the host scope write-only; the request response itself is the polling surface | Accepted |
 | [0022](0022-pre-1.0-release-line.md) | Withdraw the v1.0 label; the release line is pre-1.0 from `v0.1.0`, and release-please owns later versions | Accepted |
 | [0023](0023-source-egress-defaults.md) | An operator-set default egress set per source, unioned into every ansible run that names it at queue admission; repo content can never declare a port | Accepted |
+| [0024](0024-source-run-secrets-default.md) | An operator-set default run-secret binding name per source, filled into every ansible run that names it and passes none at queue admission; an explicit binding wins and repo content can never choose one | Accepted |
 
 Some decisions are recorded elsewhere because they are shape rather than choice: the platform
 support tiers are in
