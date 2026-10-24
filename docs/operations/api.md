@@ -30,7 +30,7 @@ Tokens carry one of three scopes, checked **before any store read**:
 | Scope | May |
 |---|---|
 | `readonly` | every `GET` route |
-| `operator` | every `GET` route, plus every enqueuing `POST` (plan/apply/playbook run) and the maintenance cordon/uncordon |
+| `operator` | every `GET` route, plus every enqueuing `POST` (plan/apply/playbook run/ad-hoc run), the maintenance cordon/uncordon, and the source, secret and run-secret writes |
 | `approve` | every `GET` route, plus `POST /approvals/{id}/decision` |
 
 `operator` does **not** cover decisions on this face: a token that can enqueue a gated apply
@@ -319,6 +319,53 @@ its own poll.
   offers a privileged run. The module and its arguments are the caller's, so an operator token
   can print what the run can read ([threat model](../security/threat-model.md)). Returns
   `job.enqueued`, or `approval.pending` when `require_approval` gated the job.
+
+## Sources, secrets and run-secrets (`operator`)
+
+```
+POST   /api/v1/sources                          # {name, path | url, ref, writable, signed, allowed_signers} -> source.added
+DELETE /api/v1/sources/{name}                   # -> source.removed {name, caches_removed}
+POST   /api/v1/sources/{name}/sync              # {ref?}; clone/fetch inline -> source.synced {name, ref, sha}
+PUT    /api/v1/sources/{name}/egress            # {ports}; [] clears -> source.get
+PUT    /api/v1/sources/{name}/run-secrets       # {binding}; "" clears -> source.get
+POST   /api/v1/secrets                          # {name, kind, value | generate, expires_at} -> secret.sealed
+PUT    /api/v1/secrets/{name}                   # {value | generate, set_expiry, expires_at} -> secret.replaced
+DELETE /api/v1/secrets/{name}                   # ?force=true past bindings -> secret.removed
+GET    /api/v1/run-secrets                      # binding names (readonly+) -> run_secret.bindings
+GET    /api/v1/run-secrets/{binding}            # pairs (readonly+) -> run_secret.pairs
+POST   /api/v1/run-secrets/{binding}            # {env_name, secret} -> run_secret.bound
+DELETE /api/v1/run-secrets/{binding}            # every pair under it -> run_secret.removed
+```
+
+These are what `exocomp source`, `secrets` and `run-secret` do on the daemon's own host, and the
+CLI uses them when a remote is selected ([Decision
+0027](../decisions/0027-credential-plane-over-the-api.md)). The writes take the `operator` scope
+as a bearer, and a browser session is refused, as on every write route. A secret's `value` is
+base64 in the request body, so binary bytes arrive unchanged, and it is never in an answer.
+Answers carry names, kinds, sources, sizes and expiry. A secret name may contain `/` (escape it
+as `%2F` in the path). `expires_at` is an RFC3339 instant. A path source's `path` is a tree on
+the daemon's host. A path that covers the data dir, or a relative one that leaves the data
+volume, is a `400`: the sandbox would refuse every run from it.
+
+- A body with a field the route does not take, or more than one JSON value, is a `400`, so a
+  misspelt field is not dropped quietly. A body over the size limit is a `413`.
+- Sealing and a git source's deploy key need the envelope: a process that holds none answers
+  `503`.
+- `POST /sources` with a `url` generates and seals a deploy key and returns its public half in
+  `public_key` once. The `url` must be a git URL, `ref` applies to it alone and may not start
+  with `-`, and `writable` applies to a path source alone. `signed` and `allowed_signers` (the
+  file's content) go together. A name whose deploy key an earlier source left sealed is a `409`.
+- `DELETE /secrets/{name}` of a secret a binding still maps is a `409` naming the bindings,
+  unless `?force=true`.
+- A secret exocomp makes for itself is a `403` on seal, replace, remove and bind, by kind
+  (`deploy-key`, `fleet-ssh-key`, `ansible-output`, `tofu-output`) and by name
+  (`source/<name>/deploy-key`, `fleet/ssh`, `ansible-output/...`, `tofu-output/...`), whether or
+  not one is sealed there yet. So are the `ab:` and `tf:` bindings that collect outputs, on
+  `POST` and `DELETE /run-secrets/{binding}` and as a source's run-secrets default. Binding one
+  would hand a value no operator held to a run, and replacing, removing or squatting one would
+  break or take over what exocomp fills there.
+- `POST /sources/{name}/sync` runs the git fetch inside the request, as the browser's Sync does.
+  A sync git fails is a `502` with a fixed message, and git's output goes to the daemon log.
 
 ## Deciding an approval
 

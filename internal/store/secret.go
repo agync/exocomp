@@ -218,6 +218,26 @@ func (s *Store) RotateSecret(ctx context.Context, name string, nonce, ciphertext
 	return nil
 }
 
+// RotateSecretSetExpiry replaces a secret's ciphertext and sets (or with a nil
+// at, clears) its expiry in one statement, so a replace that changes both never
+// lands half done.
+func (s *Store) RotateSecretSetExpiry(ctx context.Context, name string, nonce, ciphertext []byte, at *time.Time) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE secret SET nonce = ?, ciphertext = ?, rotated_at = ?, expires_at = ? WHERE name = ?`,
+		nonce, ciphertext, time.Now().UTC().UnixMilli(), msPtr(at), name)
+	if err != nil {
+		return wrap("rotate secret", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return wrap("rotate secret", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("store: rotate secret %q: %w", name, ErrNotFound)
+	}
+	return nil
+}
+
 // SetSecretExpiry sets (or with a nil at, clears) a secret's expiry. It is the
 // lifecycle attribute the replace path re-stamps; it never touches the sealed
 // value.

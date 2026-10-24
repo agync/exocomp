@@ -398,10 +398,26 @@ the gate.
   the KDF runs regardless of whether the id is live or absent. The backoff is process state and
   keys on `RemoteAddr` (a proxy collapses sources); failures are logged, not recorded on the
   token row, so a guessing run shows in the log but not in `token list`.
+- **Operator tokens reach sealed values —** the source, secret and run-secret routes ([Decision
+  0027](../decisions/0027-credential-plane-over-the-api.md)) let an operator-scope bearer bind a
+  sealed secret to an env name and run a play with it, so the token can read any secret an
+  operator sealed. The API refuses to seal, replace, remove or bind a secret exocomp makes for
+  itself (a deploy key, the fleet key, a sealed play or tofu output), by kind and by name, and
+  to change the `ab:` and `tf:` output bindings, so a bearer on `/api/v1` can neither read one
+  through a new binding nor plant one exocomp would then pick up. Those stay `--local` acts on
+  the daemon's host, and `host onboard` refuses a `fleet/ssh` row it did not seal. The
+  browser's secrets form does not reserve those names, so an operator session there can still
+  seal a secret under one. A run that names an output binding directly can read the outputs in
+  it. The same token could already seal, replace and delete secrets through the
+  browser and open the values in existing bindings, so the scope's reach over the credential
+  plane is stated here rather than narrowed. A path source can name any directory on the
+  daemon's host, writable if asked, as the browser's source form allows.
 - **Config writes leave no actor —** the check_*/netgroup_* writes on the MCP and `/api/v1`
   faces call the store verbs directly and record neither an actor nor a ledger row
   (`internal/mcp/writes.go`, `internal/web/api_write.go`, `internal/store/check.go`), exactly
-  as the existing silences and mutes already write. An agent's config change is therefore not
+  as the existing silences and mutes already write. The source, secret and run-secret writes
+  on `/api/v1` (`internal/web/api_admin.go`) name the token in the daemon log and record no
+  ledger row either. An agent's config change is therefore not
   attributable after the fact. Closing it needs a store-level writer/ledger seam; it is not
   attempted here.
 
