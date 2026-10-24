@@ -146,6 +146,9 @@ type EventFilter struct {
 	Source  string
 	Outcome string
 	Limit   int
+	// All asks for every event, which the route reads from an explicit limit of 0;
+	// without it a zero Limit leaves the daemon's default of 25.
+	All bool
 }
 
 func (f EventFilter) query() url.Values {
@@ -158,6 +161,8 @@ func (f EventFilter) query() url.Values {
 	}
 	if f.Limit > 0 {
 		q.Set("limit", strconv.Itoa(f.Limit))
+	} else if f.All {
+		q.Set("limit", "0")
 	}
 	return q
 }
