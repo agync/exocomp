@@ -62,6 +62,23 @@ can never grant itself a port. The source's detail page shows the default (an **
 default** card), and the rules page shows each playbook rule's effective egress. See
 [Source-scoped egress default](../operations/sources.md#source-scoped-egress-default).
 
+## Source-scoped run-secrets default
+
+A source whose tree needs a credential on every run, such as the env var an encrypted
+`group_vars` tree reads its vault password from, records the binding once:
+
+```bash
+exocomp source run-secrets homelab tree-vault
+```
+
+`source run-secrets <name> [binding]` sets the source's default run-secret binding; with no
+binding it clears it. Every ansible run that names the source inherits it at queue admission,
+including a rule-fired playbook, unless the run passes its own `--run-secrets`, which wins.
+The binding must already exist (`exocomp run-secret add`). `--vault-project` stays per run.
+The source's detail page shows the default (a **Run-secrets** line and card), and the rules
+page shows a `secrets <binding>` guard on each playbook rule that inherits one. See
+[Source-scoped run-secrets default](../operations/sources.md#source-scoped-run-secrets-default).
+
 ## Dependency management in sources
 
 exocomp enforces strict per-source isolation:

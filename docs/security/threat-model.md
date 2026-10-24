@@ -203,6 +203,15 @@ The reactive engine matches events to rules and gates security-relevant actions 
   raised the approval was deleted, disabled, or otherwise unresolvable at resolve time; the
   approval still fails closed at its TTL and the operator can reject it by hand. This is the
   safe direction (a resolve that cannot be scoped cancels nothing).
+- **Unattended runs holding credentials —** a source's default run-secret binding
+  ([Decision 0024](../decisions/0024-source-run-secrets-default.md)) is injected into every run
+  that names the source, including rule fires driven by webhooks, checks and host-token
+  requests. The binding is operator-set in the store and never chosen by repo content; the
+  injection uses the same allowlisted env, redaction and access-token refusal as an explicit
+  binding; and the rules page names the binding on each playbook rule that inherits it. The
+  residual is that a rule-fired play is trusted with the binding as far as its source's pinned
+  checkout is trusted. Accepted: an operator opts a source in, and a source with no default
+  behaves as before.
 - **Cap-page restart behavior —** the once-per-window cap page is process state, so a daemon
   restart re-pages a still-capped rule once — louder than silent, but not a swept ledger.
 - **Sourceless rule matching —** a rule with no `--source` matches events from any hook, a

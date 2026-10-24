@@ -221,6 +221,14 @@ verb. The rules page renders each playbook rule's **effective** egress — the u
 rule that declares nothing still shows the ports its unattended runs open rather than
 reading as no egress guard at all.
 
+The credential side has the same shape. `exocomp source run-secrets <name> [binding]`
+records a default run-secret binding on the source, and every ansible run naming it
+that passes no `--run-secrets` of its own inherits the binding at queue admission, which
+is how a rule-fired play decrypts a tree whose vault password is an env var
+([Decision 0024](../decisions/0024-source-run-secrets-default.md)). The source's detail
+page edits it through `/sources/{name}/run-secrets`, and the rules page renders a
+`secrets <binding>` guard for each playbook rule that inherits one.
+
 This is a deliberate widening, and its limit is the same one the tofu section above
 states: **Landlock filters egress by port, not by destination.** Granting 2222 permits a
 run to open 2222 to *any* host, not only the intended inventory node — the grant cannot be
