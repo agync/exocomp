@@ -160,6 +160,7 @@ permanent refusal surfaces the page's stale-live-updates banner.
 POST /api/v1/workspaces/{name}/plan
 POST /api/v1/workspaces/{name}/apply
 POST /api/v1/playbooks/run
+POST /api/v1/adhoc/run                          # `command` / `ansible`: one module on a host pattern
 POST /api/v1/maintenance/cordon                 # drain: stop new fires + claims
 POST /api/v1/maintenance/uncordon               # lift the cordon
 POST /api/v1/maintenance/restart                # drain and re-exec binary in place
@@ -299,10 +300,25 @@ its own poll.
   source, limit, tags, skip_tags, check, diff, extra_vars, tolerate_unreachable, timeout,
   ssh_identity_files}`. Each `ssh_identity_files` entry must be a file
   the daemon's operator allowed with `serve --allow-ssh-identity`, or the request is a `400`.
-  `inventory` and `source` names resolve through the same service resolvers the CLI uses. A
+  `inventory` and `source` names resolve through the same service resolvers the CLI uses.
+  `inventory` is a registered inventory or an absolute path on the daemon. A relative path is
+  a `400` rather than a path under the daemon's working directory. A field the route does not
+  take, or a second JSON value, is a `400`, and a body over 64 KiB is a `413`. A
   `source` whose checkout declares `.exocomp/hooks.yml` is refused with `501` — that
   lifecycle is a composed workflow the CLI owns, not one queued play, and is not offered on
   this face yet.
+- **`POST /adhoc/run`** — body `{runbook, host, module, args, become, source, inventory,
+  vault_project, run_secrets, runner, require_approval, tolerate_unreachable, timeout,
+  ssh_identity_files}`. `runbook` is `command` (the default) or `ansible`, the label the job
+  list shows; `module` defaults to `command`. The host pattern, module and args get the same
+  injection guards the CLI applies, and a bad one is a `400`. The `inventory` and body rules
+  are those of `/playbooks/run`. A `source` run executes from
+  that source's checkout on the daemon, so its `ansible.cfg` and relative inventory apply, and
+  queue admission adds the source's default egress ([Decision
+  0023](../decisions/0023-source-egress-defaults.md)). Neither this route nor `/playbooks/run`
+  offers a privileged run. The module and its arguments are the caller's, so an operator token
+  can print what the run can read ([threat model](../security/threat-model.md)). Returns
+  `job.enqueued`, or `approval.pending` when `require_approval` gated the job.
 
 ## Deciding an approval
 

@@ -175,6 +175,50 @@ func TestAPIPlaybookRunInventoryByName(t *testing.T) {
 	}
 }
 
+// TestAPIPlaybookRunRefusesBodies: a relative inventory, a field the route
+// does not take, and a second JSON value are refused before any job exists.
+func TestAPIPlaybookRunRefusesBodies(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+
+	for name, body := range map[string]string{
+		"relative inventory": `{"playbook":"/srv/site.yml","inventory":"hosts.yml"}`,
+		"misspelt field":     `{"playbook":"/srv/site.yml","run_secret":["s"]}`,
+		"trailing JSON":      `{"playbook":"/srv/site.yml"} {}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			code, _, resp := bearerPost(t, ts.URL, "/api/v1/playbooks/run", token, body, nil)
+			if code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (%s)", code, resp)
+			}
+		})
+	}
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("a refused request enqueued %d job(s)", len(jobs))
+	}
+}
+
+// TestAPIPlaybookRunAbsoluteInventory: an absolute path on the daemon is
+// still taken as written.
+func TestAPIPlaybookRunAbsoluteInventory(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/playbooks/run", token,
+		`{"playbook":"/srv/site.yml","inventory":"/srv/hosts.yml"}`, nil)
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", code, body)
+	}
+}
+
 // TestAPIPlaybookRunScopeGate: a readonly token is forbidden and no token is
 // unauthenticated, both before any job is created.
 func TestAPIPlaybookRunScopeGate(t *testing.T) {

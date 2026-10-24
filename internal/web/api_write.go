@@ -89,6 +89,19 @@ type approvalPendingView struct {
 	PlanArtifactID int64  `json:"plan_artifact_id,omitempty"`
 }
 
+// pendingView renders a gated enqueue's approval, with its TTL counted from now.
+func (s *Server) pendingView(a service.GatedApproval) approvalPendingView {
+	return approvalPendingView{
+		ApprovalID:     a.ApprovalID,
+		JobID:          a.JobID,
+		State:          string(a.State),
+		ExpiresAt:      a.ExpiresAt.UTC().Format(time.RFC3339),
+		TTLSeconds:     int64(a.ExpiresAt.Sub(s.now()).Seconds()),
+		Policy:         a.Policy,
+		PlanArtifactID: a.PlanArtifactID,
+	}
+}
+
 // decisionView is the outcome of a decision: which approval, the settled
 // outcome, and the terminal notice (one paragraph, values-free).
 type decisionView struct {
@@ -112,6 +125,8 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiWorkspaceDestroy))
 	mux.HandleFunc("POST /api/v1/playbooks/run",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiPlaybookRun))
+	mux.HandleFunc("POST /api/v1/adhoc/run",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiAdhocRun))
 	mux.HandleFunc("POST /api/v1/jobs/{id}/cancel",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("cancel jobs", "operator"), s.apiJobCancel))
 	mux.HandleFunc("POST /api/v1/jobs/{id}/notify",
@@ -257,6 +272,7 @@ const (
 	routeApply    = "workspace.apply"
 	routeDestroy  = "workspace.destroy"
 	routePlaybook = "playbook.run"
+	routeAdhoc    = "adhoc.run"
 )
 
 // idempotencyKey reads the caller-settable Idempotency-Key header and namespaces
@@ -421,16 +437,7 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if res.Gated {
-		a := res.Approval
-		s.apiSuccess(w, kindApprovalPending, approvalPendingView{
-			ApprovalID:     a.ApprovalID,
-			JobID:          a.JobID,
-			State:          string(a.State),
-			ExpiresAt:      a.ExpiresAt.UTC().Format(time.RFC3339),
-			TTLSeconds:     int64(a.ExpiresAt.Sub(s.now()).Seconds()),
-			Policy:         a.Policy,
-			PlanArtifactID: a.PlanArtifactID,
-		})
+		s.apiSuccess(w, kindApprovalPending, s.pendingView(res.Approval))
 		return
 	}
 
@@ -632,12 +639,8 @@ type playbookRunRequest struct {
 // not a single queued play, so it is not offered on this face yet.
 func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 	var req playbookRunRequest
-	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
-	if len(bytes.TrimSpace(body)) > 0 {
-		if err := json.Unmarshal(body, &req); err != nil {
-			s.badRequest(w, "request body is not valid JSON")
-			return
-		}
+	if !s.decodeJSON(w, r, &req, maxRunBody) {
+		return
 	}
 	if req.Playbook == "" {
 		s.badRequest(w, "playbook is required")
@@ -709,7 +712,11 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invPath, invName, err := svc.ResolveInventory(r.Context(), req.Inventory)
+	invPath, invName, err := s.resolveRunInventory(r.Context(), req.Inventory)
+	if errors.Is(err, errRelativeInventory) {
+		s.badRequest(w, err.Error())
+		return
+	}
 	if err != nil {
 		s.apiFail(w, err)
 		return
@@ -753,6 +760,190 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: res.Job.ID, State: string(res.Job.State)})
+}
+
+// adhocRunRequest is the body of an ad-hoc run: the `exocomp command` and
+// `exocomp ansible` inputs as fields. Source and Inventory are resolved here, on
+// the daemon, exactly as for a playbook run.
+type adhocRunRequest struct {
+	// Runbook is "command" or "ansible", the label the job list tells the two
+	// verbs apart by. Empty is "command".
+	Runbook             string   `json:"runbook"`
+	Host                string   `json:"host"`
+	Module              string   `json:"module"`
+	Args                string   `json:"args"`
+	Become              bool     `json:"become"`
+	Source              string   `json:"source"`
+	Inventory           string   `json:"inventory"`
+	VaultProject        string   `json:"vault_project"`
+	RunSecrets          string   `json:"run_secrets"`
+	Runner              string   `json:"runner"`
+	RequireApproval     bool     `json:"require_approval"`
+	TolerateUnreachable bool     `json:"tolerate_unreachable"`
+	Timeout             string   `json:"timeout"`
+	SSHIdentityFiles    []string `json:"ssh_identity_files"`
+}
+
+// apiAdhocRun enqueues one ad-hoc ansible module run through service.RunAdhoc,
+// the verb the browser's run-a-command form calls. A --source run executes from
+// that source's checkout, so its ansible.cfg and relative inventory apply, and
+// queue admission adds the source's default egress. The answer is job.enqueued,
+// or approval.pending when require_approval gated it. A privileged run is not
+// offered here, as on /playbooks/run.
+func (s *Server) apiAdhocRun(w http.ResponseWriter, r *http.Request) {
+	var req adhocRunRequest
+	if !s.decodeJSON(w, r, &req, maxRunBody) {
+		return
+	}
+	switch req.Runbook {
+	case "":
+		req.Runbook = "command"
+	case "command", "ansible":
+	default:
+		s.badRequest(w, "runbook must be command or ansible")
+		return
+	}
+	var timeout time.Duration
+	if req.Timeout != "" {
+		d, err := time.ParseDuration(req.Timeout)
+		if err != nil {
+			s.badRequest(w, "timeout is not a valid Go duration")
+			return
+		}
+		timeout = d
+	}
+	// RunAdhoc guards these too, but as plain errors; checked here they are the
+	// caller's bad input (400), not a server fault.
+	module := req.Module
+	if module == "" {
+		module = "command"
+	}
+	for _, err := range []error{service.ValidHostPattern(req.Host), service.ValidModuleName(module),
+		service.ValidModuleArgs(req.Args)} {
+		if err != nil {
+			s.badRequest(w, err.Error())
+			return
+		}
+	}
+	identities, err := s.allowedIdentities(req.SSHIdentityFiles)
+	if err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+
+	var dir string
+	var dirReadOnly bool
+	if req.Source != "" {
+		if err := service.ValidSourceName(req.Source); err != nil {
+			s.badRequest(w, err.Error())
+			return
+		}
+		dir, dirReadOnly, err = s.resolveSourceCheckout(r.Context(), req.Source)
+		if errors.Is(err, service.ErrSourcePathEscape) {
+			s.badRequest(w, err.Error())
+			return
+		}
+		if err != nil {
+			s.apiFail(w, err)
+			return
+		}
+	}
+
+	svc := s.service()
+	invPath, invName, err := s.resolveRunInventory(r.Context(), req.Inventory)
+	if errors.Is(err, errRelativeInventory) {
+		s.badRequest(w, err.Error())
+		return
+	}
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+
+	res, err := svc.RunAdhoc(r.Context(), s.enqueuer(), s.deriver, service.AdhocInput{
+		Runbook:             req.Runbook,
+		Pattern:             req.Host,
+		Module:              req.Module,
+		Args:                req.Args,
+		Become:              req.Become,
+		Dir:                 dir,
+		DirReadOnly:         dirReadOnly,
+		InventoryPath:       invPath,
+		InventoryName:       invName,
+		VaultProject:        req.VaultProject,
+		RunSecrets:          req.RunSecrets,
+		RunnerName:          req.Runner,
+		Source:              req.Source,
+		RequireApproval:     req.RequireApproval,
+		TolerateUnreachable: req.TolerateUnreachable,
+		IdempotencyKey:      idempotencyKey(r, routeAdhoc),
+		Timeout:             timeout,
+		SSHIdentityFiles:    identities,
+		Actor:               actorFromRequest(r),
+	})
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	if res.Gated {
+		s.apiSuccess(w, kindApprovalPending, s.pendingView(res.Approval))
+		return
+	}
+	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: res.Run.Job.ID, State: string(res.Run.Job.State)})
+}
+
+// maxRunBody bounds a run request's JSON body.
+const maxRunBody = 1 << 16
+
+// decodeJSON reads an optional JSON body of at most limit bytes into v. It
+// reports false, having written the answer, when the body is too large (413),
+// unreadable, not one JSON value, or carries a field the route does not take
+// (400): a misspelt field such as run_secret must not be dropped quietly, or
+// the run goes ahead without what the caller asked for.
+func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+	if err != nil {
+		s.badRequest(w, "request body could not be read")
+		return false
+	}
+	if int64(len(body)) > limit {
+		s.apiError(w, http.StatusRequestEntityTooLarge,
+			wire.NewError(codeInvalidArgument, "request body exceeds "+strconv.FormatInt(limit, 10)+" bytes"))
+		return false
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return true
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		s.badRequest(w, "request body is not valid JSON for this route: "+err.Error())
+		return false
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		s.badRequest(w, "request body holds more than one JSON value")
+		return false
+	}
+	return true
+}
+
+// errRelativeInventory refuses a run inventory that is neither registered nor
+// absolute.
+var errRelativeInventory = errors.New("is neither a registered inventory nor an absolute path on the daemon")
+
+// resolveRunInventory resolves a run's inventory on the daemon: a registered
+// inventory name or an absolute path on the daemon's host. A relative path
+// names nothing on a face whose caller is elsewhere, so it is refused rather
+// than resolved against the daemon's working directory.
+func (s *Server) resolveRunInventory(ctx context.Context, value string) (path, name string, err error) {
+	path, name, err = s.service().ResolveInventory(ctx, value)
+	if err != nil {
+		return "", "", err
+	}
+	if value != "" && name == "" && !filepath.IsAbs(value) {
+		return "", "", fmt.Errorf("inventory %q %w", value, errRelativeInventory)
+	}
+	return path, name, nil
 }
 
 // allowedIdentities validates the ssh identity files a request asks its run to
