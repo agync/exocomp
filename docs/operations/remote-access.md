@@ -97,7 +97,8 @@ in remote mode is byte-identical to `--output json` run locally against the same
 | `exocomp jobs list` / `get` / `events` / `follow` | the remote daemon's job state |
 | `exocomp approval list` | pending approvals on the remote daemon |
 | `exocomp source list`, `workspace list` | the remote daemon's registrations |
-| `exocomp drain` | cordons the remote daemon ([drain mode](drain-mode.md)) |
+| `exocomp drain`, `drain interrupted` | cordons the remote daemon ([drain mode](drain-mode.md)) |
+| `exocomp reload`, `restart` | reloads or restarts the remote daemon |
 
 ## Writes
 
@@ -107,6 +108,7 @@ Writes enqueue on the remote daemon and return its own envelope.
 |---|---|
 | `playbook run` | Enqueues, then follows the job to its end and exits with the job's code. `--no-follow` prints the id and exits 0 |
 | `workspace plan` | Enqueues, prints the job id |
+| `workspace destroy` | Enqueues, prints the job id |
 | `workspace apply` | Enqueues, prints the job id — or the pending approval, its policy, deadline and TTL when the plan's verdict gates it |
 | `approval decide` | Settles the approval on the daemon, which derives the capability token itself. Needs an **`approve`-scope** token: `operator` may enqueue but may not settle what it enqueued, and no token may decide an approval for a job it asked for itself |
 | `jobs follow <id>` | Streams the job's events and exits with the job's code |
@@ -121,9 +123,14 @@ another's write (see the [threat model](../security/threat-model.md)).
 `approval.decision` — byte for byte. A *followed* run emits one document, the settled job,
 rather than a stream of per-event envelopes.
 
-Config writes stay local: every `source`/`inventory`/`runsecret`/`schedule`/`secrets` write,
-`runner add`, and `backup run` run against the local data dir. There is no `--remote` path for
-them.
+Every command not listed above runs against the local data dir and has no remote path:
+`source add`/`rm`/`sync`/`egress`, `inventory`, `run-secret`, `schedule`, `rule`, `secrets`,
+`token`, `runner`, `backup`, and the rest. With `--remote` or `EXOCOMP_REMOTE` set, such a
+command refuses with an error naming the missing support instead of writing to the local
+store; under `--output json` the refusal is a `wire` error envelope with code
+`remote_unsupported`. Unset both to run it on
+this machine. `version`, `commands`, `login`, `help`, `completion`, `hooks validate`, `serve`,
+`ssh-serve`, `setup` and `upgrade` run on this machine by nature and ignore the selection.
 
 ## What does not cross the wire
 
