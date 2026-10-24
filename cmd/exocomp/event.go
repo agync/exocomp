@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/client"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -55,30 +56,40 @@ func newEventListCmd() *cobra.Command {
 				filter.Outcomes = []store.EventOutcome{store.EventOutcome(outcome)}
 			}
 
-			st, err := openStore()
-			if err != nil {
+			var views []wire.EventView
+			if rc, ok, err := remoteClient(cmd); err != nil {
 				return err
-			}
-			defer func() { _ = st.Close() }()
-
-			rows, err := st.ListEvents(cmd.Context(), filter)
-			if err != nil {
-				return err
+			} else if ok {
+				f := client.EventFilter{Source: source, Outcome: outcome, Limit: limit, All: limit <= 0}
+				if views, err = rc.ListEvents(cmd.Context(), f); err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+			} else {
+				st, err := openStore()
+				if err != nil {
+					return err
+				}
+				defer func() { _ = st.Close() }()
+				rows, err := st.ListEvents(cmd.Context(), filter)
+				if err != nil {
+					return err
+				}
+				views = wire.NewEventList(rows)
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindEventList, wire.NewEventList(rows))
+				return emitJSON(cmd, wire.KindEventList, views)
 			}
 			out := cmd.OutOrStdout()
-			if len(rows) == 0 {
+			if len(views) == 0 {
 				_, _ = fmt.Fprintln(out, "no events")
 				return nil
 			}
 
 			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintln(w, "ID\tRECEIVED\tSOURCE\tOUTCOME\tRULE\tJOB\tREASON")
-			for _, e := range rows {
+			for _, e := range views {
 				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
-					e.ID, e.ReceivedAt.Format("2006-01-02 15:04:05Z"), e.Source,
+					e.ID, wireTime(e.ReceivedAt).Format("2006-01-02 15:04:05Z"), e.Source,
 					e.Outcome, ruleLabel(e.MatchedRule), lastJobIDLabel(e.JobID), e.Reason)
 			}
 			return w.Flush()

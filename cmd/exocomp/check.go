@@ -19,6 +19,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"exocomp.dev/exocomp/internal/checkprobe"
+	"exocomp.dev/exocomp/internal/client"
 	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -84,6 +85,11 @@ func newCheckProbeCmd() *cobra.Command {
 }
 
 func runCheckProbe(cmd *cobra.Command, name, only string) error {
+	if rc, ok, err := remoteClient(cmd); err != nil {
+		return err
+	} else if ok {
+		return runRemoteCheckProbe(cmd, rc, name, only)
+	}
 	ctx := cmd.Context()
 	st, err := openStore()
 	if err != nil {
@@ -107,6 +113,17 @@ func runCheckProbe(cmd *cobra.Command, name, only string) error {
 		return fmt.Errorf("check probe: %w", err)
 	}
 
+	views := make([]wire.CheckProbeTargetView, 0, len(results))
+	for _, r := range results {
+		views = append(views, wire.CheckProbeTargetView{
+			Target: r.Name, Up: r.Up, DurationMS: r.DurationMS, Netgroup: r.Netgroup, Detail: r.Detail,
+		})
+	}
+	return printCheckProbe(cmd, views)
+}
+
+// printCheckProbe prints a probe run, local or the daemon's.
+func printCheckProbe(cmd *cobra.Command, results []wire.CheckProbeTargetView) error {
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "TARGET\tSTATUS\tDURATION\tLOCATION\tDETAIL")
 	for _, r := range results {
@@ -118,7 +135,7 @@ func runCheckProbe(cmd *cobra.Command, name, only string) error {
 		if location == "" {
 			location = "-"
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Name, status,
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Target, status,
 			(time.Duration(r.DurationMS) * time.Millisecond).String(), location, detail)
 	}
 	return w.Flush()
@@ -230,6 +247,14 @@ func newCheckAddCmd() *cobra.Command {
 				return fmt.Errorf("check add: %w", err)
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				req := client.CheckRequest{Name: name, Kind: kind, Interval: interval.String(), Targets: targets}
+				setCheckKindFields(cmd, &req, expect, minDays, expectAddr, op, value)
+				return runRemoteCheckAdd(cmd, rc, req, interval)
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -248,9 +273,8 @@ func newCheckAddCmd() *cobra.Command {
 				}
 				return validationError(err)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s (%s) added: %d target(s) every %s\n",
-				created.Name, created.Kind, len(created.Targets), interval)
-			return err
+			printCheckAdded(cmd, created.Name, created.Kind, len(created.Targets), interval)
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&kind, "kind", "", "tcp|ping|http|dns|tls|metric")
@@ -264,6 +288,46 @@ func newCheckAddCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagRequired("interval")
 	return cmd
+}
+
+func printCheckAdded(cmd *cobra.Command, name, kind string, targets int, interval time.Duration) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "check %s (%s) added: %d target(s) every %s\n",
+		name, kind, targets, interval)
+}
+
+func printCheckUpdated(cmd *cobra.Command, name string, targets int, intervalS int64) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "check %s updated: %d target(s) every %s\n",
+		name, targets, store.CheckIntervalLabel(intervalS))
+}
+
+func printCheckRemoved(cmd *cobra.Command, name string) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "check %s removed\n", name)
+}
+
+func printCheckEnabled(cmd *cobra.Command, name string, enabled bool) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "check %s %s\n", name, enabledLabel(enabled))
+}
+
+// setCheckKindFields copies the kind-specific flags the operator set into a
+// request, as pointers so the daemon can tell a flag left off from a zero
+// value. It follows the rule applyKindFlags applies to the local path.
+func setCheckKindFields(cmd *cobra.Command, req *client.CheckRequest, expect, minDays int, expectAddr, op string,
+	value float64) {
+	if expect != 0 {
+		req.Expect = &expect
+	}
+	if cmd.Flags().Changed("min-days") {
+		req.MinDays = &minDays
+	}
+	if cmd.Flags().Changed("expect-addr") {
+		req.ExpectAddr = &expectAddr
+	}
+	if cmd.Flags().Changed("op") {
+		req.Op = &op
+	}
+	if cmd.Flags().Changed("value") {
+		req.Value = &value
+	}
 }
 
 // applyKindFlags applies the kind-specific target fields after parsing, the one
@@ -338,6 +402,19 @@ func newCheckUpdateCmd() *cobra.Command {
 				return errors.New("check update: need at least one --target")
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				// The stored kind lives on the daemon, which checks the kind
+				// fields against it.
+				req := client.CheckRequest{Targets: targets}
+				if interval > 0 {
+					req.Interval = interval.String()
+				}
+				setCheckKindFields(cmd, &req, 0, minDays, expectAddr, op, value)
+				return runRemoteCheckUpdate(cmd, rc, name, req)
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -373,9 +450,8 @@ func newCheckUpdateCmd() *cobra.Command {
 				}
 				return validationError(err)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s updated: %d target(s) every %s\n",
-				updated.Name, len(updated.Targets), store.CheckIntervalLabel(updated.IntervalS))
-			return err
+			printCheckUpdated(cmd, updated.Name, len(updated.Targets), updated.IntervalS)
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&kind, "kind", "", "not updatable; the stored kind is kept")
@@ -473,6 +549,12 @@ func newCheckRmCmd() *cobra.Command {
 		Short: "Remove a probe check",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteCheckRm(cmd, rc, args[0])
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -485,8 +567,8 @@ func newCheckRmCmd() *cobra.Command {
 				}
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s removed\n", args[0])
-			return err
+			printCheckRemoved(cmd, args[0])
+			return nil
 		},
 	}
 }
@@ -516,6 +598,11 @@ func newCheckDisableCmd() *cobra.Command {
 // setCheckEnabled flips the stored flag. A running daemon's sweep reads the
 // table on every pass, so the change lands on the next sweep tick.
 func setCheckEnabled(cmd *cobra.Command, name string, enabled bool) error {
+	if rc, ok, err := remoteClient(cmd); err != nil {
+		return err
+	} else if ok {
+		return runRemoteCheckSetEnabled(cmd, rc, name, enabled)
+	}
 	st, err := openStore()
 	if err != nil {
 		return err
@@ -528,8 +615,8 @@ func setCheckEnabled(cmd *cobra.Command, name string, enabled bool) error {
 		}
 		return err
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s %s\n", name, enabledLabel(enabled))
-	return err
+	printCheckEnabled(cmd, name, enabled)
+	return nil
 }
 
 // newCheckSnoozeCmd mutes a check's transitions until a deadline. Like a
