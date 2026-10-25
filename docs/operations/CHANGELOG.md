@@ -14,6 +14,40 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.5.0](https://github.com/agync/exocomp/compare/v0.4.0...v0.5.0) (2026-10-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** with a default remote stored, a bare command goes to that daemon. Pass --local to run it against this machine.
+
+### Features
+
+* **api:** enqueue ad-hoc runs over the API ([9c50868](https://github.com/agync/exocomp/commit/9c508686d6409ee1b92b44ddd6f6922782d96cda))
+* **api:** manage schedules and rules over the API ([1ef59fe](https://github.com/agync/exocomp/commit/1ef59fe65ec56a30fb74acd4227b14764c991613))
+* **api:** manage sources and secrets over the API ([e2f0258](https://github.com/agync/exocomp/commit/e2f02585a97c1f990edd2ac9c81bcd2ff70ee42b))
+* **cli:** add schedule add --source ([4825b96](https://github.com/agync/exocomp/commit/4825b96dd932c13830f0347540663b46849bf6d3))
+* **cli:** add source run-secrets ([c6195b2](https://github.com/agync/exocomp/commit/c6195b2102ad0b8c5d36a70f2bf02997c29a0a2d))
+* **client:** add the config route calls ([1da4a1e](https://github.com/agync/exocomp/commit/1da4a1e5be92e75ef820df979795a7c5b98be818))
+* **cli:** follow the configured default remote ([a17cf68](https://github.com/agync/exocomp/commit/a17cf68f4a4b0b9c6ec310d70a6d3987cf70576c))
+* **cli:** run command and ansible on a remote ([24f358e](https://github.com/agync/exocomp/commit/24f358ea6b609922197764ac83b6919750e7fa7e))
+* **cli:** send config and event verbs to a remote ([0262df2](https://github.com/agync/exocomp/commit/0262df2a31eda93b15408c880bfb7013ff929860))
+* **cli:** send schedule and rule verbs to a remote ([9ac4e99](https://github.com/agync/exocomp/commit/9ac4e99ed3b68835323501899ada49d60d707f35))
+* **cli:** send source and secret verbs to a remote ([4ee302e](https://github.com/agync/exocomp/commit/4ee302ef56c6638422ea3ca0268e2ecfea999da5))
+* **queue:** inherit a source's run-secrets default ([be5e2e1](https://github.com/agync/exocomp/commit/be5e2e127f4237f34f4aa6a54a8bc1fb60444130))
+* **sched:** run a play from its source ([cc9e55a](https://github.com/agync/exocomp/commit/cc9e55aa8b9f258d794725d09746f736fc330786))
+* **store:** carry a source on a play schedule ([a51a3d9](https://github.com/agync/exocomp/commit/a51a3d91e6ba6aeb8ab71e6f133637ca1f3189c9))
+* **store:** persist a source run-secrets default ([0e435fd](https://github.com/agync/exocomp/commit/0e435fdf839bdb523c3d51d470fb5dd5493f5949))
+* **web:** edit the source run-secrets default ([326eaa6](https://github.com/agync/exocomp/commit/326eaa6deec6145cb29e32f7506c6eaf2ebd6e87))
+* **web:** show the source of a play schedule ([866eda6](https://github.com/agync/exocomp/commit/866eda62755ac3b85562bd2b8b89c2dba6785fcb))
+* **wire:** project the source run-secrets default ([8ef64cc](https://github.com/agync/exocomp/commit/8ef64cc36f378948c186537dc18abd52f1a416eb))
+
+
+### Bug Fixes
+
+* **cli:** let command --become reach localhost ([2eff2fc](https://github.com/agync/exocomp/commit/2eff2fc9884e9055f8fdec0193a7ed36deebb828))
+* **cli:** refuse local-only commands under --remote ([e99296e](https://github.com/agync/exocomp/commit/e99296e7f2d0839e91749b2e9144394939e2eef3))
+
 ## [0.4.0](https://github.com/agync/exocomp/compare/v0.3.2...v0.4.0) (2026-10-23)
 
 
