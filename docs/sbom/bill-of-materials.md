@@ -57,7 +57,7 @@ meet); idle RSS ≤ 60 MB, with CI failing above 80 MB.
 | ansible-core (+ Python via uv) | 2.21.3 / CPython 3.14.0 | GPL-3.0+ / PSF | playbook execution | direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
 | ansible-runner | 2.4.3 (in the image, unused by the driver) | Apache-2.0 | **not used.** The driver is a direct `ansible-playbook` subprocess — exit-code correctness, line-scanned output — rather than ansible-runner's per-task JSON events and artifact capture. A JSON task-tree callback plugin over the direct driver is backlogged v1.1 | v1.1 backlog |
 | vendored Galaxy collections (`community.sops`, …) | `requirements.yml` lock | GPL-3.0 (mostly) | playbook deps, offline-restorable | data volume cache, in every backup |
-| OpenTofu | 1.11.5 (sha256-pinned) | MPL-2.0 | plan/apply/drift; native state encryption | `-json` UI stream; HTTP backend → `exocompd` |
+| OpenTofu | 1.13.2 (sha256-pinned) | MPL-2.0 | plan/apply/drift; native state encryption | `-json` UI stream; HTTP backend → `exocompd` |
 | restic | 0.19.1 (sha256-pinned) | BSD-2 | encrypted backup engine, all three legs | `--json`; exit codes only for correctness |
 | sops | 3.13.3 (sha256-pinned) | MPL-2.0 | repo-file secret ops, identical behaviour to the operator CLI | shelled out |
 | age (CLI) | 1.3.1 (sha256-pinned) | BSD-3 | repo-file ops and the printed-card manual recovery path | shelled out |
