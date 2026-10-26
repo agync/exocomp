@@ -60,7 +60,7 @@ meet); idle RSS ≤ 60 MB, with CI failing above 80 MB.
 | OpenTofu | 1.11.5 (sha256-pinned) | MPL-2.0 | plan/apply/drift; native state encryption | `-json` UI stream; HTTP backend → `exocompd` |
 | restic | 0.19.1 (sha256-pinned) | BSD-2 | encrypted backup engine, all three legs | `--json`; exit codes only for correctness |
 | sops | 3.13.3 (sha256-pinned) | MPL-2.0 | repo-file secret ops, identical behaviour to the operator CLI | shelled out |
-| age (CLI) | 1.3.1 (sha256-pinned) | BSD-3 | repo-file ops and the printed-card manual recovery path | shelled out |
+| age (CLI) | 1.3.2 (sha256-pinned) | BSD-3 | repo-file ops and the printed-card manual recovery path | shelled out |
 | git | 2.4x | GPL-2.0 | project sources; bundle and push for the GitHub backup leg | plumbing only |
 | zstd | Fedora 44 repo | BSD-3-Clause OR GPL-2.0-only | compresses the git backup leg's archive, and decompresses it on restore. Without it on PATH a backup writes gzip, and a `.tar.zst` snapshot does not restore | `zstd -q -c` and `zstd -d -q -c` over stdin, exit code only |
 | ping (`iputils`) | Fedora 44 repo | BSD-4-Clause-UC AND GPL-2.0-or-later | `ping` checks and workflow probes, over unprivileged ICMP sockets with no setuid. The build removes `arping` and `clockdiff`, which carry `cap_net_raw` | `ping -c 1 -W 2`, exit code only |
