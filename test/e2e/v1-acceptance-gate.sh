@@ -40,4 +40,8 @@ printf '\n================ v1.0 ACCEPTANCE ================\n'
 printf '%b\n' "$results"
 printf '\n%d passed, %d skipped, %d failed\n' "$pass" "$skip" "$fail"
 [ "$fail" -eq 0 ] || { printf 'v1.0 ACCEPTANCE: FAILED\n'; exit 1; }
-printf 'v1.0 ACCEPTANCE: ALL FIVE STORIES GREEN\n'
+if [ "$skip" -gt 0 ]; then
+    printf 'v1.0 ACCEPTANCE: GREEN, %d skipped — not proven on this host\n' "$skip"
+else
+    printf 'v1.0 ACCEPTANCE: ALL FIVE STORIES GREEN\n'
+fi

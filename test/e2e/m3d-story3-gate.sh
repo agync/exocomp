@@ -22,6 +22,7 @@ log() { printf '== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 command -v tofu >/dev/null 2>&1 || { echo "SKIP: tofu absent"; exit 0; }
+command -v nono >/dev/null 2>&1 || { echo "SKIP: nono absent"; exit 0; }
 
 export XDG_DATA_HOME="$WORK/data"
 CANARY="exocomp-story3-canary"
