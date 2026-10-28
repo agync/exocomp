@@ -20,6 +20,7 @@ log() { printf '== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 export XDG_DATA_HOME="$WORK/data"
+command -v nono >/dev/null 2>&1 || { echo "SKIP: nono absent"; exit 0; }
 BIN="$WORK/bin"
 mkdir -p "$BIN"
 EXO="$BIN/exocomp"

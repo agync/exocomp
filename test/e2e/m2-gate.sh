@@ -24,6 +24,13 @@ export XDG_DATA_HOME="$WORK/data"
 DATADIR="$XDG_DATA_HOME/exocomp"
 DB="$DATADIR/exocomp.db"
 
+# Self-skip on a host without the tools this gate drives (the daemon runs jobs
+# at the enforcing sandbox tier, so nono is required), so a hosted run reports
+# SKIP rather than a failure (see .github/workflows/e2e.yml).
+for tool in nono tofu ansible-playbook ansible-vault age openssl ssh-keygen ssh python3 curl; do
+    command -v "$tool" >/dev/null 2>&1 || { printf 'SKIP: %s absent\n' "$tool"; exit 0; }
+done
+
 log "build + init"
 make -C "$ROOT" -s build
 EXO="$ROOT/bin/exocomp"

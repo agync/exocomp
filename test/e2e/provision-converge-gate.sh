@@ -38,10 +38,10 @@ export XDG_DATA_HOME="$WORK/data"
 DATADIR="$XDG_DATA_HOME/exocomp"
 
 for tool in tofu ansible-playbook ansible-galaxy python3 ssh-keyscan limactl; do
-    command -v "$tool" >/dev/null 2>&1 || { log "$tool not installed; skipping"; exit 0; }
+    command -v "$tool" >/dev/null 2>&1 || { echo "SKIP: $tool absent"; exit 0; }
 done
 state=$(limactl list --format '{{.Status}}' "$INSTANCE" 2>/dev/null || true)
-[ "$state" = "Running" ] || { log "lima instance $INSTANCE is not running (test/lima/smoke.sh); skipping"; exit 0; }
+[ "$state" = "Running" ] || { echo "SKIP: lima instance $INSTANCE not running (test/lima/smoke.sh)"; exit 0; }
 
 LIMA_PORT=$(limactl list --format '{{.SSHLocalPort}}' "$INSTANCE")
 LIMA_USER=$(awk '/^  User /{print $2; exit}' "$HOME/.lima/$INSTANCE/ssh.config")

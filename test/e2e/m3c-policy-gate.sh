@@ -23,7 +23,8 @@ export PATH="$HOME/.local/bin:$PATH"
 export XDG_DATA_HOME="$WORK/data"
 DATADIR="$XDG_DATA_HOME/exocomp"
 
-command -v tofu >/dev/null 2>&1 || { log "tofu not installed; skipping"; exit 0; }
+command -v tofu >/dev/null 2>&1 || { echo "SKIP: tofu absent"; exit 0; }
+command -v nono >/dev/null 2>&1 || { echo "SKIP: nono absent"; exit 0; }
 
 log "build + init"
 make -C "$ROOT" -s build

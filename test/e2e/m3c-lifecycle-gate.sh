@@ -37,8 +37,9 @@ export PATH="$HOME/.local/bin:$PATH"
 export XDG_DATA_HOME="$WORK/data"
 DATADIR="$XDG_DATA_HOME/exocomp"
 
-command -v ansible-playbook >/dev/null 2>&1 || { log "ansible-playbook not installed; skipping"; exit 0; }
-command -v python3 >/dev/null 2>&1 || { log "python3 not installed; skipping"; exit 0; }
+command -v ansible-playbook >/dev/null 2>&1 || { echo "SKIP: ansible-playbook absent"; exit 0; }
+command -v python3 >/dev/null 2>&1 || { echo "SKIP: python3 absent"; exit 0; }
+command -v nono >/dev/null 2>&1 || { echo "SKIP: nono absent"; exit 0; }
 
 # A tiny HTTP server that always answers with one status code, so the gate's
 # HTTP probe has a stable 200 endpoint and a stable 500 endpoint to decide on.

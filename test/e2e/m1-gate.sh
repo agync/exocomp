@@ -21,13 +21,21 @@ trap cleanup EXIT INT TERM
 
 log() { printf '== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+
+export PATH="$HOME/.local/bin:$PATH"
+# Self-skip on a host without the tools this gate drives, so a hosted run
+# reports SKIP rather than a failure (see .github/workflows/e2e.yml). Before
+# the podman() wrapper below shadows the binary.
+for tool in limactl ansible-playbook ansible-vault restic age openssl git podman curl ssh; do
+    command -v "$tool" >/dev/null 2>&1 || { printf 'SKIP: %s absent\n' "$tool"; exit 0; }
+done
+
 # podman must keep the host's own storage location: it defaults rootless
 # storage under XDG_DATA_HOME, and that is about to be redirected into WORK
 # for exocomp's data dir. Sharing it would put subuid-owned container layers
 # under WORK, which a plain `rm -rf` at cleanup cannot remove.
 podman() { env -u XDG_DATA_HOME command podman "$@"; }
 
-export PATH="$HOME/.local/bin:$PATH"
 export XDG_DATA_HOME="$WORK/data"
 DATADIR="$XDG_DATA_HOME/exocomp"
 
