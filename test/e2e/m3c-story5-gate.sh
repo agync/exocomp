@@ -1,11 +1,12 @@
 #!/bin/sh
 # M3c story-5 gate: the Terraform -> Ansible inventory handoff. A tofu apply in a
 # workspace declaring one SENSITIVE and one NON-sensitive output captures
-# `tofu output -json` in-sandbox; the materialized inventory holds the
-# non-sensitive host/group data and NOT the sensitive value; a dependent play
-# runs against that inventory from a 0700 dir with NO bearer / passphrase /
-# tfstate in its environment. The chain is one step-ledger workflow (step 2
-# blocked when step 1 fails), and a daemon killed mid-chain resumes it.
+# `tofu output -json` in-sandbox; the sensitive output is sealed into the
+# envelope and bound to DB_PASSWORD for the dependent play, while the
+# materialized inventory holds only the non-sensitive host/group data; a
+# dependent play runs against that inventory from a 0700 dir with NO bearer /
+# passphrase / tfstate in its environment. The chain is one step-ledger workflow
+# (step 2 blocked when step 1 fails), and a daemon killed mid-chain resumes it.
 # Real tofu + real ansible through one serve daemon, like m2-gate.sh.
 set -eu
 
@@ -23,6 +24,12 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 export PATH="$HOME/.local/bin:$PATH"
 export XDG_DATA_HOME="$WORK/data"
+# Hermetic client env: a hosts.toml default remote, an inherited sandbox
+# tier, or an inherited output format would all change what these commands do.
+export XDG_CONFIG_HOME="$WORK/config"
+export EXOCOMP_REMOTE=
+export EXOCOMP_SANDBOX=
+export EXOCOMP_OUTPUT=
 DATADIR="$XDG_DATA_HOME/exocomp"
 
 command -v tofu >/dev/null 2>&1 || { echo "SKIP: tofu absent"; exit 0; }
@@ -101,9 +108,11 @@ grep -q "workflow $WF: succeeded" "$WORK/status.out" || { cat "$WORK/status.out"
 grep -Eq 'step 1  tofu-apply +succeeded' "$WORK/status.out" || { cat "$WORK/status.out"; fail "apply step not succeeded"; }
 grep -Eq 'step 2  ansible-play +succeeded' "$WORK/status.out" || { cat "$WORK/status.out"; fail "play step not succeeded"; }
 
-log "the capture suppressed the sensitive output (it existed and was dropped)"
-grep -q 'suppressed 1 sensitive output' "$WORK/handoff.out" \
-    || { cat "$WORK/handoff.out"; fail "capture did not report suppressing the sensitive output"; }
+log "the capture sealed the sensitive output and bound it as DB_PASSWORD"
+grep -q 'sealed 1 sensitive output' "$WORK/handoff.out" \
+    || { cat "$WORK/handoff.out"; fail "capture did not report sealing the sensitive output"; }
+grep -q 'DB_PASSWORD=\[REDACTED\]' "$WORK/handoff.out" \
+    || { cat "$WORK/handoff.out"; fail "the play did not receive the sealed output as DB_PASSWORD"; }
 
 INV="$DATADIR/artifacts/inventory/homelab.json"
 [ -f "$INV" ] || fail "no materialized inventory at $INV"
@@ -122,8 +131,8 @@ for forbidden in 'Bearer ' 'TF_ENCRYPTION' 'TF_DATA_DIR' 'Authorization'; do
         fail "the play environment leaked $forbidden"
     fi
 done
-log "the sensitive value never reached the play or any streamed event"
-grep -q "$SENSITIVE" "$WORK/handoff.out" && fail "the sensitive value reached the play" || true
+log "the sensitive value never reached an event or the inventory"
+grep -q "$SENSITIVE" "$WORK/handoff.out" && fail "the sensitive value reached a streamed event" || true
 
 # The state row is ciphertext, so raw tfstate could never be the inventory
 # source: the play saw declared outputs, never the state.
