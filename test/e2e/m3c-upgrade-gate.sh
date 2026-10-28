@@ -20,6 +20,12 @@ log() { printf '== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 export XDG_DATA_HOME="$WORK/data"
+# Hermetic client env: a hosts.toml default remote, an inherited sandbox
+# tier, or an inherited output format would all change what these commands do.
+export XDG_CONFIG_HOME="$WORK/config"
+export EXOCOMP_REMOTE=
+export EXOCOMP_SANDBOX=
+export EXOCOMP_OUTPUT=
 command -v nono >/dev/null 2>&1 || { echo "SKIP: nono absent"; exit 0; }
 BIN="$WORK/bin"
 mkdir -p "$BIN"
