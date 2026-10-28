@@ -25,6 +25,12 @@ command -v tofu >/dev/null 2>&1 || { echo "SKIP: tofu absent"; exit 0; }
 command -v nono >/dev/null 2>&1 || { echo "SKIP: nono absent"; exit 0; }
 
 export XDG_DATA_HOME="$WORK/data"
+# Hermetic client env: a hosts.toml default remote, an inherited sandbox
+# tier, or an inherited output format would all change what these commands do.
+export XDG_CONFIG_HOME="$WORK/config"
+export EXOCOMP_REMOTE=
+export EXOCOMP_SANDBOX=
+export EXOCOMP_OUTPUT=
 CANARY="exocomp-story3-canary"
 
 log "build + init"

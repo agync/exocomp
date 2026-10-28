@@ -21,6 +21,12 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 export PATH="$HOME/.local/bin:$PATH"
 export XDG_DATA_HOME="$WORK/data"
+# Hermetic client env: a hosts.toml default remote, an inherited sandbox
+# tier, or an inherited output format would all change what these commands do.
+export XDG_CONFIG_HOME="$WORK/config"
+export EXOCOMP_REMOTE=
+export EXOCOMP_SANDBOX=
+export EXOCOMP_OUTPUT=
 DATADIR="$XDG_DATA_HOME/exocomp"
 
 command -v tofu >/dev/null 2>&1 || { echo "SKIP: tofu absent"; exit 0; }

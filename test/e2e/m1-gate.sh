@@ -30,13 +30,19 @@ for tool in limactl ansible-playbook ansible-vault restic age openssl git podman
     command -v "$tool" >/dev/null 2>&1 || { printf 'SKIP: %s absent\n' "$tool"; exit 0; }
 done
 
-# podman must keep the host's own storage location: it defaults rootless
-# storage under XDG_DATA_HOME, and that is about to be redirected into WORK
-# for exocomp's data dir. Sharing it would put subuid-owned container layers
-# under WORK, which a plain `rm -rf` at cleanup cannot remove.
-podman() { env -u XDG_DATA_HOME command podman "$@"; }
+# podman must keep the host's own storage and config: rootless storage under
+# XDG_DATA_HOME would otherwise land in WORK, and subuid-owned layers there
+# cannot be removed by a plain `rm -rf` at cleanup; XDG_CONFIG_HOME carries the
+# host's registries and policy config.
+podman() { env -u XDG_DATA_HOME -u XDG_CONFIG_HOME command podman "$@"; }
 
 export XDG_DATA_HOME="$WORK/data"
+# Hermetic client env: a hosts.toml default remote, an inherited sandbox
+# tier, or an inherited output format would all change what these commands do.
+export XDG_CONFIG_HOME="$WORK/config"
+export EXOCOMP_REMOTE=
+export EXOCOMP_SANDBOX=
+export EXOCOMP_OUTPUT=
 DATADIR="$XDG_DATA_HOME/exocomp"
 
 log "build"
