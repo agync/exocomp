@@ -239,7 +239,7 @@ func ntfyCard(vm systemVM) templ.Component {
 			}
 		}
 		if vm.Ntfy.State == NtfyStateOff {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<p class=\"leg-sentence\">Approvals still expire and auto-reject on TTL; you will only learn about them from this UI. <code>exocomp setup notify</code> mints a topic and sends the first push.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<p class=\"leg-sentence\">Approvals still expire and auto-reject on TTL; you will only learn about them from this UI. Set the server URL, topic and access token under Set up, then Send test for the first push.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

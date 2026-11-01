@@ -58,7 +58,7 @@ templ ntfyCard(vm systemVM) {
 			<p class="leg-sentence">A public topic without a token would publish approval links to anyone who guesses the name — add an access token, or self-host ntfy.</p>
 		}
 		if vm.Ntfy.State == NtfyStateOff {
-			<p class="leg-sentence">Approvals still expire and auto-reject on TTL; you will only learn about them from this UI. <code>exocomp setup notify</code> mints a topic and sends the first push.</p>
+			<p class="leg-sentence">Approvals still expire and auto-reject on TTL; you will only learn about them from this UI. Set the server URL, topic and access token under Set up, then Send test for the first push.</p>
 		}
 	</section>
 }
