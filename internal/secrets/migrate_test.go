@@ -270,3 +270,39 @@ func TestMigrateRefusals(t *testing.T) {
 		})
 	}
 }
+
+// TestRotateHostToPassphraseRemovesPlaintext: rotating a plaintext host key to
+// the passphrase tier must remove the plaintext file. Leaving it beside
+// host.key.age defeats the at-rest property the rotation is for — the volume
+// alone would still yield the key.
+func TestRotateHostToPassphraseRemovesPlaintext(t *testing.T) {
+	dir := t.TempDir()
+	env, _ := mustInit(t, dir, nil)
+	if err := env.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, hostKeyFile)); err != nil {
+		t.Fatalf("init did not write a plaintext host key: %v", err)
+	}
+
+	pass := filepath.Join(t.TempDir(), "passphrase")
+	if err := os.WriteFile(pass, []byte("a passphrase for the rotation\n"), 0o600); err != nil {
+		t.Fatalf("write passphrase: %v", err)
+	}
+	t.Setenv(EnvHostKeyPassphraseFile, pass)
+
+	if _, err := Migrate(dir, MigrateOptions{RotateHost: true}); err != nil {
+		t.Fatalf("Migrate rotate: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, hostKeyFile)); !os.IsNotExist(err) {
+		t.Error("rotation left a plaintext host.key beside host.key.age")
+	}
+	if _, err := os.Stat(filepath.Join(dir, hostKeyAgeFile)); err != nil {
+		t.Errorf("rotation did not write host.key.age: %v", err)
+	}
+	rotated, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open after rotation: %v", err)
+	}
+	_ = rotated.Close()
+}

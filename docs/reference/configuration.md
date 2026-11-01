@@ -49,10 +49,11 @@ Volume=exocomp.volume:/var/lib/exocomp
 UserNS=keep-id
 Environment=XDG_DATA_HOME=/var/lib
 Environment=EXOCOMP_IMAGE=ghcr.io/agync/exocomp:latest
-LoadCredentialEncrypted=host.key:/var/lib/exocomp/host.key.cred
+Environment=EXOCOMP_HOST_KEY_PASSPHRASE_FILE=/run/credentials/exocomp.service/passphrase
 Exec=serve
 
 [Service]
+LoadCredential=passphrase:%h/.config/exocomp/host-key.passphrase
 Restart=always
 RestartSec=5
 MemoryMax=1.5G
@@ -72,5 +73,7 @@ WantedBy=default.target
 | `EXOCOMP_IDEMPOTENCY_KEY` | Client-provided deduplication key for mutating requests |
 | `EXOCOMP_SANDBOX` | Job isolation tier default: `enforcing`, `opportunistic`, or `disabled` |
 | `EXOCOMP_IMAGE` | Container image ref recorded by the daemon for disaster recovery |
+| `EXOCOMP_HOST_KEY_PASSPHRASE` | Passphrase that wraps `host.key.age`; keep it out of the data dir |
+| `EXOCOMP_HOST_KEY_PASSPHRASE_FILE` | File holding that passphrase, for a unit or container that reads it from a credential |
 | `EXOCOMP_PUBLIC_URL` | Public base URL for decision links in notifications |
 | `NO_FLYLINE` | Disable animated terminal flyline progress during CLI runs |

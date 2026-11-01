@@ -7,10 +7,11 @@
 # openssl, restic, and coreutils — so a lost binary is not a lost restore.
 #
 # Installing the daemon itself is not this script's job: the deployment is the
-# shipped image plus the Quadlet units, then `exocomp init` (docs/operations/
-# bootstrap.md). Wrapping host.key into a systemd credential is documented there
-# too. This script is versioned separately from exocompd on purpose: it must
-# keep working when the binary does not.
+# shipped image plus the Quadlet units, then the first-run wizard (docs/
+# operations/bootstrap.md), which mints the identity and prints the kit. The
+# rootless unit keeps a passphrase-wrapped host key, documented there too. This
+# script is versioned separately from exocompd on purpose: it must keep working
+# when the binary does not.
 set -eu
 
 VERSION=0.0.1

@@ -93,6 +93,15 @@ Inside the container the listener has to bind `0.0.0.0` to be reachable through 
 published port, which is why `Exec=serve --web-addr 0.0.0.0:8642` differs from the host
 service's loopback bind in the quickstart.
 
+The unit also needs a host-key passphrase outside the volume before it starts. A
+systemd **user** manager cannot decrypt a host-scope credential
+(`systemd-creds --with-key=host` is root-only and the user manager rejects the file with
+`Scope mismatch`), so the shipped unit uses the passphrase tier: `host.key.age` in the
+volume, a random passphrase in `~/.config/exocomp/host-key.passphrase` outside it, passed
+in as a plain systemd credential and named with `EXOCOMP_HOST_KEY_PASSPHRASE_FILE`. Create
+it and run the first-run wizard against the volume before the first start; the full
+sequence is in [bootstrap](bootstrap.md#install).
+
 The state backend and `/metrics` on `:8643` bind the container's own loopback, which a
 published port does not reach. Under rootless podman 5.8 with pasta the connection to
 `127.0.0.1:8643` on the host is accepted and then reset. Reach them from inside the

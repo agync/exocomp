@@ -1,14 +1,14 @@
 ---
 type: Guide
 title: "Bootstrap"
-description: "The image and Quadlet deploy, the six-screen idempotent wizard, node-zero self-management, the separately versioned recovery script, and the adoption runbooks for an existing homelab."
+description: "The image and Quadlet deploy, the four-screen first-run wizard, the host-key passphrase tier, the backup drill that proves recovery, and adoption of existing OpenTofu state."
 status: stable
 tags: [operations, bootstrap]
 ---
 
 # Bootstrap
 
-Target: **under 10 minutes**, dominated by typing a git URL and printing the recovery kit.
+Target: **under 10 minutes**, dominated by storing the recovery kit.
 
 ## Install
 
@@ -20,100 +20,138 @@ hosts (Synology, TrueNAS); see
 
 On the host:
 
-1. get the image — `podman pull ghcr.io/agync/exocomp:latest`, or on an air-gapped
-   box `podman load -i exocomp-image.tar` from the recovery set,
-2. drop `quadlet/exocomp.container` and `quadlet/exocomp.volume` into
-   `~/.config/containers/systemd/` and run `loginctl enable-linger`,
-3. `systemctl --user daemon-reload && systemctl --user start exocomp`,
-4. `exocomp init` (or the `setup` wizard) to create the identity and print the
-   recovery kit.
+```bash
+# 1. the image, the units, and a user manager that outlives the login
+podman pull ghcr.io/agync/exocomp:latest
+mkdir -p ~/.config/containers/systemd
+cp packaging/quadlet/exocomp.container packaging/quadlet/exocomp.volume \
+  ~/.config/containers/systemd/
+loginctl enable-linger
+systemctl --user daemon-reload
 
-The recovery primitive is deliberately **not** "run the control plane": it is
-the separately versioned `recovery.sh` ([invariant 7](https://github.com/agync/exocomp/blob/main/AGENTS.md)), which
+# 2. the data volume and the first web token; serve refuses to bind without one
+podman volume create systemd-exocomp
+podman run --rm --userns keep-id -v systemd-exocomp:/var/lib/exocomp \
+  ghcr.io/agync/exocomp:latest --no-input token new web
+
+# 3. the host-key passphrase, outside the data volume, then the wizard
+install -d -m 700 ~/.config/exocomp
+openssl rand -base64 32 > ~/.config/exocomp/host-key.passphrase
+chmod 600 ~/.config/exocomp/host-key.passphrase
+podman run --rm -it --userns keep-id \
+  -e EXOCOMP_HOST_KEY_PASSPHRASE_FILE=/run/secrets/host-key.passphrase \
+  -v ~/.config/exocomp/host-key.passphrase:/run/secrets/host-key.passphrase:ro,Z \
+  -v systemd-exocomp:/var/lib/exocomp \
+  ghcr.io/agync/exocomp:latest setup
+
+# 4. start it
+systemctl --user start exocomp
+```
+
+The volume is named `systemd-exocomp` because the Quadlet prefix is `systemd-`.
+Create it before the first container write: a volume first written under a
+different user namespace belongs to the wrong uid, and `serve` then fails on
+`serve.lock` with permission denied. Compose prefixes its own volume name.
+
+`exocomp setup` needs a terminal (`-it`); it is the first-run wizard described
+below. Store the recovery kit it prints before going further.
+
+The rootless unit runs `serve` on the container's `0.0.0.0:8642` behind the
+published `127.0.0.1:8642`, and the state/API backend on `127.0.0.1:8643`. Add
+`--public-url https://your.host` once the surface has an address a phone can
+reach, so approval links and push deep links point at it.
+
+### Host key at rest
+
+The design property is that a stolen data volume alone yields nothing. There are
+two ways to hold the key outside the volume, and a rootless **user** unit can
+only use the second:
+
+- **systemd credential** (`LoadCredentialEncrypted=` with
+  `systemd-creds --with-key=host`). The unwrap secret is root-only, and a user
+  manager rejects the resulting file with `Scope mismatch: Wrong medium type`.
+  This tier is for a system-level deployment.
+- **passphrase-wrapped** (`host.key.age`, the shipped rootless unit). The
+  passphrase is a random string in `~/.config/exocomp/host-key.passphrase`,
+  outside the volume, passed in as a plain systemd credential
+  (`LoadCredential=`) and named to the container with
+  `EXOCOMP_HOST_KEY_PASSPHRASE_FILE`. `init` and `setup` write `host.key.age`
+  when that variable is set; `serve` unwraps it at open.
+
+`doctor` reports the real tier, and `init` warns loudly if it ever writes a bare
+`host.key`. Losing both the recovery kit and the host key is unrecoverable by
+design, so the passphrase file is a host secret like any other: keep it with the
+host's other credentials, not in the data volume.
+
+## The wizard
+
+The wizard is the TUI's first-run mode: four screens, one write.
+
+| # | Screen | What happens |
+|---|---|---|
+| 1 | **Operator & identity** | Captures the operator display name, detects the machine name, and generates an `exo-{machine}-{id}` ntfy topic |
+| 2 | **Recovery kit** | Renders the kit and requires typing `I HAVE STORED THIS`. The wizard cannot be skipped past this screen |
+| 3 | **Mint** | Leaving this screen mints the host identity and keyring, saves the operator and ntfy topic, attempts a test push, and prints the kit. This is the single write; quitting earlier leaves no trace |
+| 4 | **Hand over** | Shows the kit again with the notify status |
+
+A bare `exocomp init` does the identity and kit only, without the operator or
+ntfy settings; it is the non-interactive form for a scripted host. Neither the
+wizard nor `init` takes a backup.
+
+## After the wizard
+
+1. **Prove recovery.** Register a target, take a backup, and drill it:
+
+   ```bash
+   exocomp backup add-target --name nas --kind restic_local --uri /mnt/nas/exocomp
+   exocomp backup run --target nas
+   exocomp backup drill --target nas
+   ```
+
+   The drill restores the newest snapshot into a throwaway directory, verifies
+   the manifest digests, and opens the restored database for `integrity_check`.
+   The live data dir is never touched. [Disaster recovery](disaster-recovery.md)
+   covers the three legs and the hand chain.
+
+2. **Add a source.** `exocomp source add <name> --url <git-url>` registers a
+   repository and prints a deploy key; `--path` registers a tree already on the
+   box. See [sources](../guide/sources.md).
+
+3. **Wire notifications.** The ntfy server URL and token live under the system
+   page's push channel; the wizard already minted the topic. See
+   [setup, notifications and metrics](notifications.md).
+
+4. **Check the host.** `exocomp doctor` reports the data dir, the host-key tier,
+   the sandbox probe, the tool manifest, and the self-observability gauges.
+
+## Recovery
+
+The recovery primitive is deliberately **not** "run the control plane": it is the
+separately versioned `recovery.sh`
+([invariant 7](https://github.com/agync/exocomp/blob/main/AGENTS.md)), which
 rebuilds a data dir from a backup with no exocomp code in the path — delegating
 to `exocomp restore` when a binary is present, and running the recovery card's
 hand chain when it is not: age → openssl HKDF → restic for a restic target, and
 git clone → check the parts manifest and join the `.age.partNN` parts → age →
-zstd or gzip → tar for a git target, sha256-verified either way. The git chain also
-checks the manifest tags under the target's manifest subkey and refuses a snapshot
-without them unless `--allow-unauthenticated` is given. The tags are keyed from the
-branch's own `keyring.age`, so `--keyring` with a copy you trust makes the script refuse
-a branch whose keyring differs, and `--target-name` stops the branch choosing which
-target's tags it passes for. Run `recovery.sh --help`. It is versioned separately on purpose: the recovery path
+zstd or gzip → tar for a git target, sha256-verified either way. The git chain
+also checks the manifest tags under the target's manifest subkey and refuses a
+snapshot without them unless `--allow-unauthenticated` is given. The tags are
+keyed from the branch's own `keyring.age`, so `--keyring` with a copy you trust
+makes the script refuse a branch whose keyring differs, and `--target-name`
+stops the branch choosing which target's tags it passes for. Run
+`recovery.sh --help`. It is versioned separately on purpose: the recovery path
 must not depend on the thing that broke.
 
-### Host key at rest
+## Adopting existing state
 
-`exocomp init` writes `host.key` under the data volume. Move it into a systemd
-credential so a stolen volume holds only the opaque `host.key.cred` that is
-useless without the host secret (or the TPM):
+An existing OpenTofu workspace migrates onto the HTTP backend with one command:
 
-```sh
-# TPM 2 present (/dev/tpmrm0): seal to the TPM. Without one, --with-key=host
-# uses the systemd host secret. Either way the plaintext is removed.
-systemd-creds encrypt --name=host.key --with-key=host+tpm2 \
-  /var/lib/exocomp/host.key /var/lib/exocomp/host.key.cred
-rm -f /var/lib/exocomp/host.key
+```bash
+exocomp workspace adopt <name>
 ```
 
-The quadlet's `LoadCredentialEncrypted=host.key:…` decrypts it back to
-`$CREDENTIALS_DIRECTORY/host.key` at start. If TPM sealing fails, retry with
-`--with-key=host`. This is a documented one-off, not a scripted mode.
-
-A container does not inherit the service's credential directory, and
-`$CREDENTIALS_DIRECTORY` is therefore not set inside it, so the unit mounts that
-directory read-only and points the variable at the mount. The mount carries `Z`: with
-a plain `ro` the credential keeps its host SELinux label and the container's read is
-denied, which surfaces as `host key absent — run exocomp init` rather than as a
-permission error. `Z` rather than `z` on purpose, since `z` is the shared label a
-second container can read. The relabel is safe because the source is this service's own
-tmpfs directory, recreated at every start; it is not a shared store, so there is no
-hard-linked content to corrupt and nothing that has to survive the label.
-
-## The wizard
-
-The wizard is the TUI's first-run mode. Six screens, each **idempotent** — check before
-create, so re-running it never clobbers what exists and never has a one-shot
-create-the-admin footgun.
-
-| # | Screen | What happens |
-|---|---|---|
-| 1 | **Identity** | Generate the host age identity; auto-detect TPM2 and offer `systemd-creds` sealing (default yes); generate the DEK and wrap it. One screen explains the availability-versus-confidentiality trade between a file-backed key, a TPM-sealed key, and a YubiKey-only keyring |
-| 2 | **Recovery kit** | Mint the recovery identity, render the printable kit plus QR, require typing `I HAVE STORED THIS`. **The wizard cannot be skipped past this screen.** Optionally add a YubiKey recipient now |
-| 3 | **Backup targets** | Add at least one NAS path, S3 URI, or GitHub repo. Each is *tested immediately*: init the restic repo, write a canary, read it back, delete it. A target that fails the round-trip cannot be saved |
-| 4 | **First project** | Git URL, with a deploy key generated and displayed for pasting into the forge; fetch, then **auto-discover** — repo-root YAML files with a `hosts:` key become candidate Ansible runbooks, directories containing `*.tf` become candidate OpenTofu workspaces, and the operator checkboxes what to import. Also the import-existing-vault-password flow |
-| 5 | **Notifications** | ntfy server and topic — **self-hosted or token-authenticated, never a public topic**, because approval URLs are bearer capabilities — with a test push. healthchecks is provisioned here as a first-class step, and its ping URL is stored, backed up, and printed on the kit |
-| 6 | **Verify** | Run `exocomp doctor` (`--deep` arrives with the wizard), run the first backup, and run `dr-drill` **immediately**, showing the result. **You have a proven restore path before you have done any real work** |
-
-Screen 4's auto-discovery is the difference between "five minutes to working" and "an
-afternoon of forms". Screen 6 is the one that cannot be made optional: it is the only thing
-that turns the recovery chain from a design claim into an observed fact.
-
-## Node zero
-
-The wizard seeds an `exocomp-self` project containing the Quadlet unit, the daemon config,
-and a `self-update` runbook, so updating the control plane is a normal approval-gated,
-logged, rollback-able job — and every upgrade takes a mandatory pre-upgrade snapshot first
-([upgrade and rollback](upgrade.md)).
-
-The *recovery* primitive is deliberately **not** "run the control plane". It is the
-separately versioned `recovery.sh`. Self-update is opt-in and never automatic: an unattended
-bad update of the thing that manages everything else is a single point of failure for the
-whole homelab.
-
-## Adopting an existing homelab
-
-Adoption paths are reversible runbooks tested against fixtures, not one-way doors:
-
-- **Existing OpenTofu state** — `exocomp workspace adopt <name>` runs one
-  `tofu init -force-copy` (which implies `-migrate-state`) with an unencrypted
-  read fallback so the old `terraform.tfstate` migrates onto the HTTP backend.
-  The local file is drained and tofu keeps a `.backup`; the fallback exists for
-  that one run only — every later run is encrypted as usual. Reversible: the
-  old backend's `.backup` still exists while the migration is fresh.
-- **Existing ansible-vault password** — imported at screen 4, stored as a `vault_pass`
-  secret and bound to a vault-id.
-- **Existing restic repository** — verified and adopted rather than re-initialised.
-- **Existing hosts** — the seeded host-onboarding runbook pushes the SSH key, creates the
-  `ansible_user` and sudoers entry, and records the host key into the database so that DR
-  restores host trust rather than triggering a fleet-wide host-key warning.
+It runs `tofu init -force-copy` once (`-force-copy` implies `-migrate-state`) with an
+unencrypted read fallback so the old `terraform.tfstate` moves, then removes it; tofu
+keeps a `.backup`, and every later run is encrypted as usual. Run it where `exocomp serve` is not running —
+the adopt run serves the state backend itself. It refuses a workspace that
+already has state in exocomp.

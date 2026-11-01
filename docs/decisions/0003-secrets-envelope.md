@@ -43,10 +43,12 @@ bytes of recipient stanzas.
 default recipients are the host identity and a printed recovery identity; an
 `age-plugin-yubikey` recipient is optional. Any one recipient unwraps the DEK. The host
 identity's private key (`host.key`) is protected **at rest** so a stolen data volume alone
-does not contain it: on the primary systemd tier it is delivered through an encrypted
+does not contain it: on a system-level systemd tier it is delivered through an encrypted
 `systemd-creds` credential (`--with-key=host`, TPM-sealed with `host+tpm2` where a TPM is
-present), whose unwrap secret lives outside the data volume; on the compose tier it is a
-scrypt-passphrase-wrapped `host.key.age` with the passphrase held outside the volume. A
+present), whose unwrap secret lives outside the data volume; a systemd **user** manager
+cannot decrypt a host-scope credential, so the shipped rootless Quadlet and the compose
+tier use a scrypt-passphrase-wrapped `host.key.age` with the passphrase held outside the
+volume. A
 bare plaintext `host.key` is the insecure fallback only — `init` warns loudly and `doctor`
 reports the real tier.
 

@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-11-01
+
+- **The bootstrap docs describe the shipped first run.** [Bootstrap](operations/bootstrap.md)
+  and the [quickstart](guide/quickstart.md) now describe the four-screen wizard, the
+  passphrase host-key tier the rootless Quadlet uses, and the manual backup drill. The
+  six-screen wizard and the wizard-run restore drill they recorded were never in the
+  code; the [threat model](security/threat-model.md) names the user-manager constraint
+  that rules out a host-scope credential there.
+
 ## 2026-10-24
 
 - **Silence, mute, check and netgroup verbs over a remote.** [Driving a remote
