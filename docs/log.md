@@ -338,27 +338,27 @@ Newest first.
   currently true belongs. This bundle now describes the shipped state only, with no
   rejected alternatives and no design-phase provenance.
 - [index.md](index.md) loses its History section, and [design/index.md](design/index.md),
-  [design/amendments.md](design/amendments.md),
+  `design/amendments.md`,
   [decisions/0001-thin-core-architecture.md](decisions/0001-thin-core-architecture.md) and
   [decisions/0002-project-name-exocomp.md](decisions/0002-project-name-exocomp.md) state their
   conclusions inline instead of linking across to another wiki.
-- [AGENTS.md](../AGENTS.md) and the docs-curator role card no longer list `history/` in the
+- `AGENTS.md` and the docs-curator role card no longer list `history/` in the
   bundle layout.
 - **Update**: Dropped the design handoff captures under
-  [design/reference/](design/reference/): the two canvas PDFs, the `canvas/` and
+  `design/reference/`: the two canvas PDFs, the `canvas/` and
   `realign/` artboard PNGs, and the standalone web and phone dashboard PNGs. The
   `realign/` captures were already stale against the shipped surface, so nothing
   the code or the web UI depends on is lost.
 - **Update**: Dropped the seventeen `reference/tui/` frame files that were
   byte-identical to the golden fixtures under
-  [../internal/tui/testdata/frames/](../internal/tui/testdata/frames/), which is
+  `internal/tui/testdata/frames/`, which is
   the copy the tests read.
 - Five design notes that are not fixtures stay: `keymap.txt`, `colors.txt`,
   `copy.txt`, `states.txt`, and `README.txt`. `internal/tui/render.go`,
   `internal/tui/empty.go` and `internal/tui/write.go` cite them as the source of
   the color rule, the empty-state copy, and the keymap contract.
 - [design/index.md](design/index.md) and
-  [design/ui-brief.md](design/ui-brief.md) no longer point at the dropped paths,
+  `design/ui-brief.md` no longer point at the dropped paths,
   and `.pre-commit-config.yaml` no longer excludes the emptied directory.
 
 ## 2026-10-06
@@ -383,7 +383,7 @@ Newest first.
   [Decision 0018](decisions/0018-aggregate-check-events.md) is superseded by
   [Decision 0019](decisions/0019-aggregate-check-events-removed.md).
 - `check_row.aggregate`/`min_up` and migration
-  [0041](../internal/store/migrations/0041_check_aggregate.sql) remain as inert
+  `0041_check_aggregate.sql` remain as inert
   schema; no drop-column migration is added.
 
 ## 2026-09-26
@@ -395,7 +395,7 @@ Newest first.
   10-year validity and trust-on-first-use pinned by fingerprint
   (`internal/web/tls.go`), and a Tailscale tailnet cert or an ACME reverse proxy
   renews itself. R2 corrected in
-  [design/v1.1-roadmap.md](design/v1.1-roadmap.md); the `tls` check kind stays as a
+  `design/v1.1-roadmap.md`; the `tls` check kind stays as a
   general, unprioritized capability for certificates nothing else renews.
 
 ## 2026-09-17
@@ -651,7 +651,7 @@ Newest first.
 - contribution guide and specs store.
 
 - **New page** [contribution/index.md](contribution/index.md): the working
-  procedure behind [AGENTS.md](../AGENTS.md) — the DCO, commit conventions,
+  procedure behind `AGENTS.md` — the DCO, commit conventions,
   worktree workflow, verification, and design/review. Linked from the bundle
   index and from AGENTS.md's "Working here".
 - **`brain/` lands in `.agents/`** — `.agents/brain/specs/` holds specs for
@@ -756,7 +756,7 @@ from the bearer-only `/api/v1`.
 - **New page** [design/DESIGN.md](design/DESIGN.md): the web UI design system — color,
   typography, spacing, and component tokens — sourced from `internal/web`. The architecture
   technical-design that previously held this name moves to
-  [history/design/DESIGN.md](history/design/DESIGN.md) as provenance.
+  `history/design/DESIGN.md` as provenance.
 - **New** repo-root `README.md`, current to shipped reality (OpenTofu, the single
   MCP-over-HTTP surface, remote CLI, sandbox tiers).
 - **Voice.** Internal build codenames — milestone tags, finding and review ids, process
@@ -767,10 +767,10 @@ from the bearer-only `/api/v1`.
 ## 2026-08-24
 
 The four target-user personas now live as one crisp definitions page,
-[design/personas.md](design/personas.md). The internal persona-review, persona-scenario,
+`design/personas.md`. The internal persona-review, persona-scenario,
 and practitioner-gap-review planning pages are removed; their surviving conclusions live in
-[design/v1.1-roadmap.md](design/v1.1-roadmap.md) and
-[design/v1-acceptance.md](design/v1-acceptance.md).
+`design/v1.1-roadmap.md` and
+`design/v1-acceptance.md`.
 
 
 ## 2026-08-24
@@ -801,7 +801,7 @@ container-image tier stays deferred.
 
 ## 2026-08-24
 
-[design/bootstrap-first.md](design/bootstrap-first.md) and the operations pages describe
+`design/bootstrap-first.md` and the operations pages describe
 run-secret file staging on `/dev/shm`: per-instance session directories, a
 `--secret-staging {auto,tmpfs,disk}` backend with a loud disk fallback, best-effort mlock,
 and unlink-on-exit. `exocomp doctor` reports the resolved backend and residual posture.
@@ -869,7 +869,7 @@ stdio-only clients and the agent-aware CLI as the local path.
   the `exocomp bootstrap run <playbook> <workspace>` ansible-first chain, with the
   `--capture` (env) and `--capture-file` (KUBECONFIG-shaped file) credential handoffs added
   in later passes.
-- **New page** [design/bootstrap-first.md](design/bootstrap-first.md): the proposed
+- **New page** `design/bootstrap-first.md`: the proposed
   ansible-first-then-tofu design for the Kubernetes persona, linked from the v1.1 roadmap.
 - **New page** [operations/sealed-tofu-outputs.md](operations/sealed-tofu-outputs.md): the
   credential half of the Terraform→Ansible handoff (`tf-output/<workspace>/<output>` sealed
@@ -904,12 +904,12 @@ stdio-only clients and the agent-aware CLI as the local path.
 
 - design handoffs imported.
 
-- Web design handoff under [design/reference/](design/reference/) (canvas PDF v0.1, artboard
+- Web design handoff under `design/reference/` (canvas PDF v0.1, artboard
   captures); design tokens live at `internal/web/tokens.css`.
-- TUI design handoff under [design/reference/tui/](design/reference/tui/) (text frames,
+- TUI design handoff under `design/reference/tui/` (text frames,
   keymap, colors, copy, states); the frames are golden fixtures under
-  `internal/tui/testdata/frames/`. [design/tui-brief.md](design/tui-brief.md) and
-  [design/ui-brief.md](design/ui-brief.md) record the settled decisions, including the phone
+  `internal/tui/testdata/frames/`. `design/tui-brief.md` and
+  `design/ui-brief.md` record the settled decisions, including the phone
   approval-surface contract.
 - **Correction.** The printed recovery card's derivation block renders from code, not from
   the mock: the shipped envelope uses the constant salt `exocomp/v1` with `info = purpose:id`
@@ -947,7 +947,7 @@ stdio-only clients and the agent-aware CLI as the local path.
 
 The `docs/` bundle was created as an OKF v0.2 knowledge base, curated from the
 pre-repository design archive. The curated pages summarize; the archive's source documents
-were imported byte-identical under [history/](history/index.md) — thirteen files, checked
+were imported byte-identical under `history/` — thirteen files, checked
 for absolute paths and home directories (none present).
 
 - **Sections and pages**: `index.md`, this `log.md`, `decisions/` (0001–0006, Accepted),
@@ -957,9 +957,9 @@ for absolute paths and home directories (none present).
 - **Naming.** Most of the archive predates the rename from the working name "control" to
   **exocomp** ([Decision 0002](decisions/0002-project-name-exocomp.md)); curated pages use the current
   name throughout, and imported history was deliberately not rewritten (see
-  [history/index.md](history/index.md)).
+  `history/index.md`).
 - **Precedence.** Where a curated page and a history page disagree, the curated page wins;
-  the twelve [amendments](design/amendments.md) override the accepted candidate design.
+  the twelve amendments override the accepted candidate design.
 
 
 ## 2026-08-21
