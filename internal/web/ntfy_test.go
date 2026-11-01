@@ -240,7 +240,7 @@ func TestNtfyCardRefused(t *testing.T) {
 }
 
 // TestNtfyCardOff is the OFF tile: nothing set, the quiet Set up verb, and the
-// sentence naming the setup command. The figure is a dim `—`.
+// sentence naming the setup surface. The figure is a dim `—`.
 func TestNtfyCardOff(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, &fakeNtfy{})
@@ -259,7 +259,7 @@ func TestNtfyCardOff(t *testing.T) {
 		`<span class="value dim">—</span>`,
 		"no channel · nothing set",
 		`data-modal-open="ntfy-modal">Set up</button>`,
-		"exocomp setup notify",
+		"Set the server URL, topic and access token under Set up, then Send test for the first push.",
 	} {
 		if !strings.Contains(card, want) {
 			t.Errorf("OFF tile missing %q", want)
