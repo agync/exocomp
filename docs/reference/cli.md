@@ -24,7 +24,7 @@ These flags apply across all CLI commands:
 | `-y, --assume-yes` | — | Answer yes to destructive confirmations (scripts, CI) |
 | `--no-input` | — | Refuse confirmations instead of waiting on stdin |
 
-*(Note: Data directory defaults to `$XDG_DATA_HOME/exocomp` or `/var/lib/exocomp`, and can be customized via `EXOCOMP_DATA_DIR` or `--data-dir` on lifecycle commands).*
+*(Note: the data directory is `$XDG_DATA_HOME/exocomp` — `~/.local/share/exocomp` by default, `/var/lib/exocomp` in the image. Set `XDG_DATA_HOME` to move it. `recovery.sh` takes `--dest` and reads `EXOCOMP_DATA_DIR` for its own default.)*
 
 ## Primary verbs
 

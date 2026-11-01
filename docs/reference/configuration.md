@@ -66,7 +66,7 @@ WantedBy=default.target
 
 | Variable | Description |
 |---|---|
-| `EXOCOMP_DATA_DIR` | Directory holding `exocomp.db`, `keyring.age`, and caches |
+| `XDG_DATA_HOME` | Base for the data dir: the daemon uses `$XDG_DATA_HOME/exocomp` (`~/.local/share/exocomp` by default; the image sets `/var/lib`, so `/var/lib/exocomp`) |
 | `EXOCOMP_OUTPUT` | Output formatting: `text` or `json` (or `yaml` for export) |
 | `EXOCOMP_REMOTE` | HTTPS endpoint or pinned host of a remote daemon when using the CLI as a client |
 | `EXOCOMP_TOKEN` | Bearer token for client authentication |

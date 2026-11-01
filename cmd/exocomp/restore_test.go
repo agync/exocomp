@@ -20,7 +20,7 @@ func TestRestoreRequiresFrom(t *testing.T) {
 
 func TestRestoreDefaultsDest(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("EXOCOMP_DATA_DIR", filepath.Join(tmp, "exocomp"))
+	t.Setenv("XDG_DATA_HOME", tmp)
 
 	cmd := newRestoreCmd()
 	// Provide --from with a non-existent local target so it fails on target access
