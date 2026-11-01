@@ -15,8 +15,8 @@ Target: **under 10 minutes**, dominated by storing the recovery kit.
 The deployment is the shipped image plus the Quadlet units. Podman Quadlet is
 primary — rootless, systemd-native, journald, and a smaller blast radius for a
 box holding key material. A compose file ships as the fallback for Docker-only
-hosts (Synology, TrueNAS); see
-[the platform contract](../architecture/platform-contract.md).
+hosts (Synology, TrueNAS); its first-run sequence and passphrase secret are in
+[containers](containers.md#compose-first-run).
 
 On the host:
 

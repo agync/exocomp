@@ -84,7 +84,7 @@ podman run --rm --userns keep-id -v systemd-exocomp:/var/lib/exocomp \
 ```
 
 The volume name is the generated one for the Quadlet, created when
-`exocomp-volume.service` starts. Compose prefixes its own (`exocomp-state`). The unit runs
+`exocomp-volume.service` starts. Compose prefixes the project directory (`packaging_exocomp-state` for the checkout path). The unit runs
 with `UserNS=keep-id`, so every command that writes to the volume has to as well. A volume
 first written without it belongs to a different user, and `serve` then fails with
 `open /var/lib/exocomp/serve.lock: permission denied`.
@@ -109,6 +109,71 @@ container, or run the container with `Network=host`. The host's loopback is then
 container's. Drop the `PublishPort=` and `Sysctl=` lines ([ping checks](#ping-checks)) and
 bind the web surface to `127.0.0.1:8642` in the `Exec=` line, as the host service does,
 because `0.0.0.0` would then be every host interface.
+
+## Compose first run
+
+The shipped compose file **bind-mounts the host-key passphrase** from outside the
+checkout, so the wrapped key in the volume is useless without the host file. The file must
+be readable by the container user — `0644` — because the container's uid does not map to
+the host user under rootless Podman or a default Docker userns. Keep it in a directory only
+your account can enter (`0700`); the file is world-readable, so the directory is what keeps
+other local accounts out. On a Podman host the alternative is `0600` plus
+`userns_mode: keep-id`, which Docker rejects, so the shipped file does not set it.
+
+The mount carries the shared SELinux relabel (`z`), not the Quadlet's private `Z`: the
+one-off `compose run` container and the long-lived service both mount the file, and `Z`
+would relabel it per container and break the other. On a host without SELinux the relabel
+is a no-op, and a filesystem without SELinux xattrs (NFS, SMB) cannot take it, so keep the
+file on local storage.
+
+Create it, then run the first-run verbs through the same service so they use the volume
+and mount `up` will:
+
+```sh
+export EXOCOMP_HOST_KEY_PASSPHRASE_FILE=$HOME/.config/exocomp/host-key.passphrase
+install -d -m 700 ~/.config/exocomp
+openssl rand -base64 32 > "$EXOCOMP_HOST_KEY_PASSPHRASE_FILE"
+chmod 644 "$EXOCOMP_HOST_KEY_PASSPHRASE_FILE"
+
+docker compose -f packaging/compose.yaml run --rm exocomp --no-input token new web
+docker compose -f packaging/compose.yaml run --rm exocomp setup
+docker compose -f packaging/compose.yaml up -d
+```
+
+`compose run` allocates a TTY for `setup` and mounts the file at
+`/run/secrets/host-key.passphrase`. The variable is needed for **every** compose verb, not
+just `up`: `ps`, `logs` and `down` fail the same interpolation when it is unset, so keep
+the export in the shell or wrapper that runs the stack. `token new` before `setup` is
+fine: setup only refuses when a host key already exists.
+
+The `build:` stanza builds from this checkout; on a host without the source, pull the
+image first with `docker compose -f packaging/compose.yaml pull`.
+
+The `z` relabel is a permanent change to the file's SELinux type (`container_file_t`,
+shared), which is why it is a dedicated passphrase file rather than something reused.
+
+An install that already has a plaintext `host.key` in its volume migrates once the
+passphrase file exists. Stop the stack first: `identity migrate` refuses while `serve`
+holds the lock.
+
+```sh
+docker compose -f packaging/compose.yaml down
+docker compose -f packaging/compose.yaml run --rm exocomp identity migrate --rotate-host
+docker compose -f packaging/compose.yaml up -d
+```
+
+`--rotate-host` mints a new host identity, re-wraps the keyring to it and removes the
+plaintext `host.key`; `exocomp doctor` then reports `passphrase-wrapped`. The generation
+bump makes the printed recovery kit stale, so reprint it with
+`exocomp recovery-kit` ([disaster recovery](disaster-recovery.md)).
+
+On a Podman host, run the Compose file through podman's Docker-compatible socket rather
+than `podman-compose`:
+
+```sh
+systemctl --user start podman.socket
+export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+```
 
 ## Running commands against the container
 

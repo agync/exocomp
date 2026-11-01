@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-11-01
 
+- **Compose uses the passphrase host-key tier.** [Containers](operations/containers.md#compose-first-run)
+  documents the bind-mounted passphrase and the first-run verbs; the
+  [platform contract](architecture/platform-contract.md) and
+  [threat model](security/threat-model.md) now describe the passphrase tier
+  there, as [Decision 0003](decisions/0003-secrets-envelope.md) records.
 - **The bootstrap docs describe the shipped first run.** [Bootstrap](operations/bootstrap.md)
   and the [quickstart](guide/quickstart.md) now describe the four-screen wizard, the
   passphrase host-key tier the rootless Quadlet uses, and the manual backup drill. The
