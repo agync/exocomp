@@ -13,12 +13,13 @@ its own health.
 
 ## First-run setup
 
-`exocomp setup` is a four-step wizard: identity → recovery kit → first backup and drill →
-hand over. Nothing is written to disk until the final step, so quitting earlier leaves no
-trace. The recovery-kit step blocks until you confirm you have stored the key.
+`exocomp setup` is a four-screen wizard: identity → recovery kit phrase → mint → hand
+over. Nothing is written to disk until the mint step, so quitting earlier leaves no trace.
+The recovery-kit screen blocks until you confirm you have stored the key.
 
-Step four is the single write. It mints the identity and keyring, then persists the
-operator display name and the generated ntfy topic to the store, and attempts a test push.
+Leaving the mint screen is the single write. It mints the identity and keyring, then
+persists the operator display name and the generated ntfy topic to the store, and attempts
+a test push.
 The topic is ordinary configuration — never a sealed secret — and the ntfy server URL and
 access token are configured elsewhere. When only a topic has been minted and no push
 transport is configured yet, the hand-over screen says so plainly rather than claiming a

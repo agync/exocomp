@@ -64,10 +64,10 @@ func warnIfPlaintextHostKey(prot secrets.HostKeyProtection, warn io.Writer) {
 	_, _ = fmt.Fprintln(warn, "")
 	_, _ = fmt.Fprintln(warn, "WARNING: host.key is a bare PLAINTEXT file in the data dir.")
 	_, _ = fmt.Fprintln(warn, "         A copy of the data volume alone recovers every secret.")
-	_, _ = fmt.Fprintf(warn, "         Move it to a secure tier: set %s (or %s) and re-init for a\n",
-		secrets.EnvHostKeyPassphrase, secrets.EnvHostKeyPassphraseFile)
-	_, _ = fmt.Fprintln(warn, "         passphrase-wrapped key, or install via the Quadlet unit's systemd")
-	_, _ = fmt.Fprintln(warn, "         credential (host key unwrapped with a secret outside the volume).")
+	_, _ = fmt.Fprintf(warn, "         Move it to a secure tier: set %s, stop the daemon,\n",
+		secrets.EnvHostKeyPassphraseFile)
+	_, _ = fmt.Fprintln(warn, "         and run `exocomp identity migrate --rotate-host` to wrap it outside")
+	_, _ = fmt.Fprintln(warn, "         the data volume.")
 	_, _ = fmt.Fprintln(warn, "")
 }
 

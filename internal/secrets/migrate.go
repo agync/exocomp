@@ -385,6 +385,24 @@ func stageHostKey(dataDir string, host *age.X25519Identity) error {
 	return writeHostKey(tmp, host)
 }
 
+// clearStaleHostKeyTier removes the host key file of the tier a rotation just
+// replaced. Leaving it behind defeats the at-rest property: a passphrase-wrapped
+// host.key.age beside a plaintext host.key still yields the DEK to anyone
+// holding the volume, and a stale host.key.age beside a plaintext key makes
+// serve refuse to open with no passphrase set.
+func clearStaleHostKeyTier(dataDir string) error {
+	if _, err := os.Stat(filepath.Join(dataDir, hostKeyAgeFile)); err == nil {
+		if err := os.Remove(filepath.Join(dataDir, hostKeyFile)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("secrets: rotate: remove stale plaintext host key: %w", err)
+		}
+		return nil
+	}
+	if err := os.Remove(filepath.Join(dataDir, hostKeyAgeFile)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("secrets: rotate: remove stale wrapped host key: %w", err)
+	}
+	return nil
+}
+
 // promoteRotation renames every staged sibling onto its live path. The host key
 // goes first so the new keyring — wrapped to the new host — can be opened the
 // moment it is active; keyring.age goes last so its rename is the single commit
@@ -396,6 +414,9 @@ func promoteRotation(dataDir string) error {
 	}
 	if err := renameIfPresent(filepath.Join(dataDir, hostKeyAgeNextName), filepath.Join(dataDir, hostKeyAgeFile)); err != nil {
 		return fmt.Errorf("secrets: rotate: activate host key: %w", err)
+	}
+	if err := clearStaleHostKeyTier(dataDir); err != nil {
+		return err
 	}
 	if err := renameIfPresent(filepath.Join(dataDir, recipientsNextName), filepath.Join(dataDir, recipientsFile)); err != nil {
 		return fmt.Errorf("secrets: rotate: activate recipients: %w", err)
@@ -565,7 +586,7 @@ func replaceHostKey(dataDir string, host *age.X25519Identity) error {
 		if err := os.Rename(tmp, path); err != nil {
 			return fmt.Errorf("secrets: migrate: replace host key: %w", err)
 		}
-		return nil
+		return clearStaleHostKeyTier(dataDir)
 	}
 
 	path := filepath.Join(dataDir, hostKeyFile)
@@ -577,7 +598,7 @@ func replaceHostKey(dataDir string, host *age.X25519Identity) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("secrets: migrate: replace host key: %w", err)
 	}
-	return nil
+	return clearStaleHostKeyTier(dataDir)
 }
 
 func writeFileAtomic(path string, body []byte, mode os.FileMode) error {

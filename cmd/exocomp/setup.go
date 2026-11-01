@@ -27,9 +27,9 @@ func init() {
 func newSetupCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "setup",
-		Short: "First-run wizard: identity, recovery kit, first backup, hand over",
-		Long: "A four-step first run. Nothing is written to disk until the final step, so " +
-			"quitting earlier leaves no trace. The recovery-kit step blocks until you " +
+		Short: "First-run wizard: identity, recovery kit, hand over",
+		Long: "A four-step first run. Nothing is written to disk until you leave the mint " +
+			"screen, so quitting earlier leaves no trace. The recovery-kit step blocks until you " +
 			"confirm you have stored the key: without it, every backup is unreadable.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -301,12 +301,12 @@ func (m setupModel) View() tea.View {
 }
 
 func (m setupModel) renderStep3() string {
-	return tui.RenderWizardStep(3, "FIRST BACKUP + RESTORE", []string{
-		"exocomp takes a backup now and immediately restores it to a scratch",
-		"path, so the very first thing you learn is that recovery works.",
+	return tui.RenderWizardStep(3, "MINT AND HAND OVER", []string{
+		"enter mints the host identity and keyring, saves the operator and the",
+		"ntfy topic, and prints the recovery kit.",
 		"",
-		"nothing is written until you hand over at step 4.",
-	}, "[enter] run the drill", "[esc] back")
+		"nothing is written until you press enter.",
+	}, "[enter] mint and hand over", "[esc] back")
 }
 
 func (m setupModel) renderStep4() string {

@@ -43,8 +43,9 @@ best. State is the SQLite file beside it, never a database someone else operates
   webhook, an API or MCP call, a drift check — converges on one SQLite-backed job
   queue before anything executes, which is what makes the guardrails enforceable
   rather than advisory.
-- **Trivial bootstrap.** An idempotent first-run wizard stands an install up in
-  minutes and does not finish until a restore drill has passed.
+- **Trivial bootstrap.** A four-step first-run wizard mints the identity, prints the
+  recovery kit and hands over. The first backup and its restore drill are the next
+  step in the [quickstart](docs/guide/quickstart.md).
 - **Trivial disaster recovery.** The recovery chain from a printed key to a
   restored host is executable by hand; it depends on no registry, vendor, or this
   project's own code.

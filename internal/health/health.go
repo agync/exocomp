@@ -254,8 +254,8 @@ func secretsProtectionEntry(res SecretsProtectionProbe) wire.HealthEntry {
 
 // HostKeyFixHint names the two ways to move a plaintext host key to a secure
 // tier. It is one line so init and doctor say the same thing.
-const HostKeyFixHint = "wrap it (set " + secrets.EnvHostKeyPassphrase +
-	" and re-init, or install via the Quadlet unit's systemd credential)"
+const HostKeyFixHint = "wrap it (set " + secrets.EnvHostKeyPassphraseFile +
+	", stop the daemon, run `exocomp identity migrate --rotate-host`)"
 
 // TPMSuffix notes TPM backing only when a TPM is actually present, so a report
 // never claims hardware sealing that is not there.

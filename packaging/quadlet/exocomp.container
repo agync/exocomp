@@ -8,17 +8,19 @@ After=exocomp.volume
 Image=ghcr.io/agync/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
-# The daemon reads the host key from $CREDENTIALS_DIRECTORY, and a container does
-# not inherit the service's credential directory, so mount it read-only and point
-# the variable at it. systemd creates it before ExecStart runs. The `Z` is not
-# decorative: without a private relabel SELinux leaves the host label on the
-# credential and the container's read is denied. `Z` and not `z`, deliberately —
-# `z` is the shared variant a second container can read, which is wrong for a
-# private key. The relabel is safe because the source is this service's own tmpfs
-# directory, recreated at every start: it is not a shared store, so the "never
-# relabel :Z" rule does not apply, and nothing has to survive the label.
+# The daemon reads the host-key passphrase from $CREDENTIALS_DIRECTORY, and a
+# container does not inherit the service's credential directory, so mount it
+# read-only and point the variable at it. systemd creates it before ExecStart
+# runs. The `Z` is not decorative: without a private relabel SELinux leaves the
+# host label on the credential and the container's read is denied. `Z` and not
+# `z`, deliberately — `z` is the shared variant a second container can read,
+# which is wrong for a private key. The relabel is safe because the source is
+# this service's own tmpfs directory, recreated at every start: it is not a
+# shared store, so the "never relabel :Z" rule does not apply, and nothing has
+# to survive the label.
 Volume=%t/credentials/exocomp.service:/run/credentials/exocomp.service:ro,Z
 Environment=CREDENTIALS_DIRECTORY=/run/credentials/exocomp.service
+Environment=EXOCOMP_HOST_KEY_PASSPHRASE_FILE=/run/credentials/exocomp.service/passphrase
 # Rootless keep-id posture; per-job caps stay off (byo-runner.md).
 UserNS=keep-id
 # Lets the image's gid 1000, which keep-id keeps, send ping checks from this
@@ -47,10 +49,11 @@ Exec=serve --port 8643 --web-addr 0.0.0.0:8642
 Restart=always
 RestartSec=5
 MemoryMax=1.5G
-# host.key arrives as an encrypted systemd credential, decrypted to
-# $CREDENTIALS_DIRECTORY/host.key at start (bootstrap.md). It is a service key:
-# the Quadlet generator rejects it in [Container].
-LoadCredentialEncrypted=host.key:/var/lib/exocomp/host.key.cred
+# A user manager cannot decrypt a host-scope systemd credential, so the rootless
+# unit uses the passphrase tier: host.key.age sits in the data volume and its
+# passphrase is a plain file outside it, passed in as a credential. Create it
+# before the first start (bootstrap.md).
+LoadCredential=passphrase:%h/.config/exocomp/host-key.passphrase
 
 [Install]
 WantedBy=default.target
