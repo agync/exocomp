@@ -14,6 +14,9 @@ Newest first.
   six-screen wizard and the wizard-run restore drill they recorded were never in the
   code; the [threat model](security/threat-model.md) names the user-manager constraint
   that rules out a host-scope credential there.
+- **The data dir comes from `XDG_DATA_HOME`.** [Configuration](reference/configuration.md),
+  the [CLI reference](reference/cli.md) and the [developer workflow](contribution/dev-workflow.md)
+  documented `EXOCOMP_DATA_DIR` and `--data-dir`, which the binary never read.
 
 ## 2026-10-24
 
