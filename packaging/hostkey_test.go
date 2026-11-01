@@ -3,6 +3,8 @@ package packaging
 import (
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // hostKeyPassphrasePath is the one path the unit and its documentation share.
@@ -82,5 +84,60 @@ func TestBootstrapDocDocumentsThePassphraseTier(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("bootstrap.md does not name %q; the passphrase tier is undocumented", want)
 		}
+	}
+}
+
+// TestComposeMountsTheHostKeyPassphrase: the compose file must bind-mount the
+// host-key passphrase from outside the volume, with the shared SELinux relabel
+// (`z`) a file mount needs and the read-only flag, so the wrapped key in the
+// volume is useless without the host file. It must not go back to a Compose
+// file secret: that is a plain bind mount without a relabel, which a non-root
+// container cannot read on an SELinux host.
+func TestComposeMountsTheHostKeyPassphrase(t *testing.T) {
+	var doc struct {
+		Services map[string]struct {
+			Environment map[string]string `yaml:"environment"`
+			Volumes     []string          `yaml:"volumes"`
+		} `yaml:"services"`
+		Secrets map[string]any `yaml:"secrets"`
+	}
+	if err := yaml.Unmarshal([]byte(readPackagingFile(t, "compose.yaml")), &doc); err != nil {
+		t.Fatalf("parse compose.yaml: %v", err)
+	}
+	if len(doc.Secrets) != 0 {
+		t.Error("compose.yaml declares secrets again; the passphrase is a bind mount with a relabel")
+	}
+	svc, ok := doc.Services["exocomp"]
+	if !ok {
+		t.Fatal("compose.yaml has no exocomp service")
+	}
+	var mount string
+	for _, v := range svc.Volumes {
+		if strings.Contains(v, "/run/secrets/host-key.passphrase") {
+			mount = v
+			break
+		}
+	}
+	if mount == "" {
+		t.Fatal("compose.yaml does not mount the host-key passphrase")
+	}
+	if !strings.Contains(mount, "${EXOCOMP_HOST_KEY_PASSPHRASE_FILE:?") {
+		t.Errorf("the passphrase mount does not require EXOCOMP_HOST_KEY_PASSPHRASE_FILE: %q", mount)
+	}
+	parts := strings.Split(mount, ":")
+	opts := strings.Split(parts[len(parts)-1], ",")
+	has := func(want string) bool {
+		for _, o := range opts {
+			if o == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("ro") || !has("z") {
+		t.Errorf("the passphrase mount is not read-only with the shared SELinux relabel: %q", mount)
+	}
+	if got := svc.Environment["EXOCOMP_HOST_KEY_PASSPHRASE_FILE"]; got != "/run/secrets/host-key.passphrase" {
+		t.Errorf("EXOCOMP_HOST_KEY_PASSPHRASE_FILE = %q, want the mounted path", got)
 	}
 }

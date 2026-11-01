@@ -14,14 +14,25 @@ services:
         max-file: "3"
     volumes:
       - exocomp-state:/var/lib/exocomp
+      # The host-key passphrase, bind-mounted from outside the checkout so a
+      # stolen volume holds only the wrapped key. `z` is the shared SELinux
+      # relabel a file mount needs; the file must be readable by the container
+      # user (0644 — see docs/operations/containers.md).
+      - ${EXOCOMP_HOST_KEY_PASSPHRASE_FILE:?set EXOCOMP_HOST_KEY_PASSPHRASE_FILE to the host-key passphrase file}:/run/secrets/host-key.passphrase:ro,z
     environment:
       EXOCOMP_IMAGE: ghcr.io/agync/exocomp:latest
+      EXOCOMP_HOST_KEY_PASSPHRASE_FILE: /run/secrets/host-key.passphrase
     # Same surface as the Quadlet: the web listener needs a token first
     # (Decision 0009 refuses a non-loopback bind without one), and it must bind
     # 0.0.0.0 inside the container to be reachable through the published port.
-    # Mint it with:
-    #   docker run --rm -v exocomp-state:/var/lib/exocomp \
-    #     ghcr.io/agync/exocomp:latest --no-input token new web
+    # Run the first-run verbs through this service so they use the same volume
+    # and passphrase `up` will:
+    #   docker compose -f packaging/compose.yaml run --rm exocomp --no-input token new web
+    #   docker compose -f packaging/compose.yaml run --rm exocomp setup
+    # An existing plaintext host.key migrates once the passphrase exists; stop the
+    # stack first (identity migrate refuses while serve holds the lock):
+    #   docker compose -f packaging/compose.yaml down
+    #   docker compose -f packaging/compose.yaml run --rm exocomp identity migrate --rotate-host
     command: ["serve", "--port", "8643", "--web-addr", "0.0.0.0:8642"]
     # Lets the image's gid 1000 send ping checks from this network namespace.
     sysctls:
