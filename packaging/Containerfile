@@ -27,7 +27,7 @@ ARG TOFU_VERSION=1.13.2
 ARG RESTIC_VERSION=0.19.1
 ARG AGE_VERSION=1.3.2
 ARG SOPS_VERSION=3.13.3
-ARG NONO_VERSION=0.80.0
+ARG NONO_VERSION=0.81.0
 ARG LITESTREAM_VERSION=0.5.17
 
 RUN dnf -y install --setopt=install_weak_deps=0 ca-certificates curl tar gzip bzip2 unzip \
