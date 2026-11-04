@@ -55,7 +55,7 @@ A playbook that needs more than a port is the one case for `--privileged`, a per
 
 When a job runs, the Web UI streams logs and execution progress in real time:
 
-<p><img src="../design/assets/jobs/1c-job-log-tail.png" alt="Live job log tail"></p>
+<p><img src="../design/assets/jobs/1c-job-log-tail.webp" alt="Live job log tail"></p>
 
 Jobs display structured timing, execution parameters, and output logs. Completed jobs retain their full output logs in SQLite storage for post-mortem analysis.
 
@@ -101,4 +101,4 @@ exocomp playbook run playbooks/workstations.yml \
 
 If hosts are unreachable, the job completes with a `degraded` state instead of raising a critical failure notification:
 
-<p><img src="../design/assets/jobs/1b-job-detail-degraded.png" alt="Job detail in degraded state"></p>
+<p><img src="../design/assets/jobs/1b-job-detail-degraded.webp" alt="Job detail in degraded state"></p>

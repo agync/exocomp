@@ -14,11 +14,11 @@ best. State is the SQLite file beside it, never a database someone else operates
 
 | Web console | OpenTofu plan diff | Live job output |
 |:---:|:---:|:---:|
-| ![The web console](docs/design/assets/web/1a-shell-dashboard.png) | ![An OpenTofu plan diff under decision](docs/design/assets/tofu/1b-plan-diff.png) | ![A job's output tail](docs/design/assets/jobs/1c-job-log-tail.png) |
+| ![The web console](docs/design/assets/web/1a-shell-dashboard.webp) | ![An OpenTofu plan diff under decision](docs/design/assets/tofu/1b-plan-diff.webp) | ![A job's output tail](docs/design/assets/jobs/1c-job-log-tail.webp) |
 
 | System and self-care | Phone approvals | Terminal UI |
 |:---:|:---:|:---:|
-| ![The four self-care legs](docs/design/assets/system/1a-system-desktop.png) | ![A one-thumb approval on a phone](docs/design/assets/mobile/2e-approval-decision.png) | ![The TUI home screen](docs/design/assets/tui/tui-home.png) |
+| ![The four self-care legs](docs/design/assets/system/1a-system-desktop.webp) | ![A one-thumb approval on a phone](docs/design/assets/mobile/2e-approval-decision.webp) | ![The TUI home screen](docs/design/assets/tui/tui-home.webp) |
 
 ## What it combines
 

@@ -36,7 +36,7 @@ nas_backup_pass   password   2026-09-15 08:00:00  never
 
 In the Web UI, secrets are displayed as metadata-only cards with explicit change and removal controls:
 
-<p><img src="../design/assets/web/1e-secrets.png" alt="Secrets metadata interface"></p>
+<p><img src="../design/assets/web/1e-secrets.webp" alt="Secrets metadata interface"></p>
 
 To add or update a secret:
 
