@@ -33,7 +33,7 @@ exocomp includes a native reachability monitoring system that tracks the health 
 
 In the Web UI, the Checks view renders target status in an interactive card grid:
 
-<p><img src="../design/assets/web/1b-checks.png" alt="Reachability checks interface"></p>
+<p><img src="../design/assets/web/1b-checks.webp" alt="Reachability checks interface"></p>
 
 The UI adheres strictly to the design invariant: **State is colour plus word**. A failing target renders as a red badge containing the explicit text `DOWN`, while an unpolled target displays `UNOBSERVED`.
 

@@ -188,7 +188,7 @@ exocomp token new web
 
 Open `https://127.0.0.1:8642` and present the token:
 
-<p><img src="../design/assets/web/1a-shell-dashboard.png" alt="exocomp web dashboard"></p>
+<p><img src="../design/assets/web/1a-shell-dashboard.webp" alt="exocomp web dashboard"></p>
 
 The dashboard presents the system status before detail: active alerts, pending approval
 gates, backup freshness, and running queue jobs.
