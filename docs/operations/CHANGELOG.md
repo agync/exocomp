@@ -14,6 +14,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.6.0](https://github.com/agync/exocomp/compare/v0.5.0...v0.6.0) (2026-11-05)
+
+
+### Features
+
+* **assets:** convert site and docs images to WebP ([5da3598](https://github.com/agync/exocomp/commit/5da3598d42001f3061c4979e1601824169a165e3))
+* **site:** rebuild the landing page ([cb8c9d0](https://github.com/agync/exocomp/commit/cb8c9d0d663b51612e18118c713477484228d40c))
+
+
+### Bug Fixes
+
+* **bootstrap:** make the rootless path work ([8bc4e5d](https://github.com/agync/exocomp/commit/8bc4e5dc845d76984bac50bfe7909e4c2b0d48f7))
+* **compose:** use the passphrase host-key tier ([ee98ef8](https://github.com/agync/exocomp/commit/ee98ef8a6bf85694945c1c13068b21a6a6112130))
+* **web:** point the ntfy off tile at Send test ([534bcd5](https://github.com/agync/exocomp/commit/534bcd530fbf6b7098e31d6d5453f2673fe19fee))
+
 ## [0.5.0](https://github.com/agync/exocomp/compare/v0.4.0...v0.5.0) (2026-10-25)
 
 
