@@ -15,13 +15,15 @@ Newest first.
   and [failover](operations/failover.md). The pages and their figures describe the same
   mechanism. Sources and the render rig live under `.contrib/docs/assets/`; the WebP images are
   `docs/design/assets/figures/`. Directory trees and code samples stay text.
-
 - **Recovery tells the operator to re-key a restored host.** A restic restore writes
   `keyring.age` but no `host.key` or `recipients`, so [disaster recovery](operations/disaster-recovery.md)
   now installs the printed recovery identity as a temporary `host.key`, rebuilds the public
   recipient list from the card, runs `exocomp identity migrate --rotate-host` with `serve`
   stopped, and then starts the service. The printed card and `recovery.sh` carry the same
   step; the recovery figure shows it.
+- **The failover procedure names the fast-forward lease edge.** A Litestream fast-forward can
+  carry a lease still inside its TTL; [failover](operations/failover.md) now says to wait it
+  out or use `--force-lease` deliberately on the standby's own copy.
 
 ## 2026-11-01
 
