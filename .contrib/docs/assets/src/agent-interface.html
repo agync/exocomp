@@ -1,0 +1,152 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>exocomp agent interface</title>
+<link rel="stylesheet" href="../shell.css">
+
+<div class="shot">
+  <div class="bar">
+    <div class="bar-l">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+        <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+      </svg>
+      <span class="word">exocomp</span>
+      <span class="chip">Agent interface</span>
+      <span class="title">One core, three programmatic faces</span>
+    </div>
+    <span class="meta">docs / design</span>
+  </div>
+
+  <div class="canvas">
+    <div class="layers">
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Workstation</div>
+          <div class="n">operator<br>or agent host</div>
+        </div>
+        <div class="row three">
+          <div class="tile">
+            <div class="name">exocomp CLI</div>
+            <div class="desc">local data dir<br>--remote / EXOCOMP_REMOTE</div>
+          </div>
+          <div class="tile">
+            <div class="name">HTTP client</div>
+            <div class="desc">curl · typed SDK<br>values-free JSON</div>
+          </div>
+          <div class="tile">
+            <div class="name">MCP client</div>
+            <div class="desc">bearer /mcp<br>tools · resources</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vflow">
+        <svg viewBox="0 0 20 24"><path d="M10 0v17M4 12l6 6 6-6"/></svg>
+        <span>tailnet · bearer token + pinned cert / Tailscale Serve TLS</span>
+      </div>
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Listener</div>
+          <div class="n">one auth story<br>Decision 0009</div>
+        </div>
+        <div class="rows">
+          <div class="r">
+            <span class="route">/</span>
+            <span class="what">HTML surface, existing</span>
+            <span class="auth">session cookie · 3 scopes</span>
+          </div>
+          <div class="r">
+            <span class="route">/api/v1/…</span>
+            <span class="what">operator JSON API</span>
+            <span class="auth">requireAuth + scope</span>
+          </div>
+          <div class="r">
+            <span class="route">POST /mcp</span>
+            <span class="what">MCP over HTTP</span>
+            <span class="auth">bearer + scope</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="vflow">
+        <svg viewBox="0 0 20 24"><path d="M10 0v17M4 12l6 6 6-6"/></svg>
+        <span>all three call the same write verbs</span>
+      </div>
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Service</div>
+          <div class="n">all business logic<br>no HTTP, no HTML</div>
+        </div>
+        <div class="tile is-core">
+          <div class="name">internal/service</div>
+          <div class="desc">the four write verbs and their resolvers · reads go store-direct</div>
+          <div class="verbs">
+            <span class="verb hot">PlanWorkspace</span>
+            <span class="verb hot">ApplyWorkspace</span>
+            <span class="verb hot">RunPlaybook</span>
+            <span class="verb hot">DecideApproval</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="vflow">
+        <svg viewBox="0 0 20 24"><path d="M10 0v17M4 12l6 6 6-6"/></svg>
+        <span>enqueue only — never shell out</span>
+      </div>
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Queue</div>
+          <div class="n">the one path<br>guardrails live here</div>
+        </div>
+        <div class="tile is-core">
+          <div class="name">queue.Enqueue / EnqueueGated / Release</div>
+          <div class="desc">every face converges here before anything runs · one queue, no side doors</div>
+        </div>
+      </div>
+
+      <div class="vflow">
+        <svg viewBox="0 0 20 24"><path d="M10 0v17M4 12l6 6 6-6"/></svg>
+        <span>the worker calls these</span>
+      </div>
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Core</div>
+          <div class="n">shared<br>primitives</div>
+        </div>
+        <div class="row four">
+          <div class="tile">
+            <div class="name">store</div>
+            <div class="desc">SQLite · migrations<br>step ledger</div>
+          </div>
+          <div class="tile">
+            <div class="name">reactive</div>
+            <div class="desc">CEL rules<br>webhook events</div>
+          </div>
+          <div class="tile">
+            <div class="name">executor</div>
+            <div class="desc">disabled · nono<br>container</div>
+          </div>
+          <div class="tile">
+            <div class="name">secrets</div>
+            <div class="desc">DEK · HKDF<br>redaction</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="cap">
+    <span><b>Exit code is truth.</b> A machine branches on an integer and a typed code; the CLI, the API and MCP share one marshaller, so the three faces stay byte-identical.</span>
+    <span class="cap-meta">Decision 0014</span>
+  </div>
+</div>
+
+<script>
+  document.title = 'H=' + Math.ceil(document.querySelector('.shot').getBoundingClientRect().height);
+</script>

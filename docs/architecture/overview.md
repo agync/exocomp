@@ -13,45 +13,9 @@ and recovery**; `ansible-core`, `opentofu`, `restic`, `sops`, `age` and `git` ar
 subprocesses that do the actual work. Rationale in
 [Decision 0001](../decisions/0001-thin-core-architecture.md).
 
-```mermaid
-graph TB
-    subgraph clients["Clients — one API"]
-        TUI["TUI (Bubble Tea v2)<br/>local + ssh via Wish"]
-        WEB["Web (templ + vanilla JS, go:embed)"]
-        DESK["Desktop (Wails, deferred)"]
-        CLI["exocomp CLI / scripts"]
-        HOOKS["Webhooks: Alertmanager,<br/>Uptime Kuma, healthchecks,<br/>GitHub — 4th headless client"]
-    end
+<p><img src="../design/assets/figures/architecture-overview.webp" alt="Layered component map: TUI, web, desktop and CLI call one HTTP/JSON API, which enqueues on the single job queue; webhooks enter on the loopback listener and feed the rules; rules and guardrails, approval gates, the secrets envelope, the OpenTofu state backend, the backup engine and SQLite surround the queue; pinned subprocesses and three backup legs sit below."></p>
 
-    subgraph core["exocompd — one Go binary, one process"]
-        API["HTTP/JSON API (unix socket default,<br/>TCP+bearer opt-in)"]
-        Q["Job queue + scheduler<br/>(SQLite state machine, concurrency keys)"]
-        RULES["cel-go rules + guardrails<br/>(cooldown/cap/dedup ledgers in SQLite)"]
-        GATE["Approval gates (HMAC single-use tokens)"]
-        VAULT["Secrets envelope<br/>age recipients → DEK → HKDF subkeys"]
-        TFB["OpenTofu HTTP state backend<br/>(GET/POST/LOCK/UNLOCK → SQLite)"]
-        BK["Backup engine (3-leg fan-out)"]
-        DB[("exocomp.db — SQLite, WAL")]
-    end
-
-    subgraph tools["Pinned subprocesses in the image"]
-        T1["ansible-playbook / ansible-core"]
-        T2["opentofu"]
-        T3["restic · sops · age · git"]
-    end
-
-    subgraph targets["Backup legs (independent)"]
-        NAS["NAS (SMB/NFS mount)"]
-        S3["S3-compatible"]
-        GH["private GitHub repo<br/>(age-encrypted archives)"]
-    end
-
-    clients --> API --> Q --> tools
-    HOOKS --> RULES --> GATE --> Q
-    VAULT --> Q
-    T2 -.->|http backend 127.0.0.1| TFB --> DB
-    BK --> T3 --> NAS & S3 & GH
-```
+*Figure — the component map. Every path converges on the queue; only the queue executes.*
 
 ## One queue, no side doors
 

@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>exocomp failover sequence</title>
+<link rel="stylesheet" href="../shell.css">
+
+<div class="shot">
+  <div class="bar">
+    <div class="bar-l">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+        <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+      </svg>
+      <span class="word">exocomp</span>
+      <span class="chip">Failover</span>
+      <span class="title">Confirm, restore, then start the daemon</span>
+    </div>
+    <span class="meta">docs / operations</span>
+  </div>
+
+  <div class="canvas">
+    <div class="seq three">
+      <div class="seq-head">
+        <div class="p">
+          <div class="k">Actor</div>
+          <div class="n">Operator</div>
+          <div class="s">console + recovery kit</div>
+        </div>
+        <div class="p down">
+          <div class="k">Host</div>
+          <div class="n">Primary</div>
+          <div class="s">stopped / powered off</div>
+        </div>
+        <div class="p">
+          <div class="k">Host</div>
+          <div class="n">Standby</div>
+          <div class="s">restore + serve</div>
+        </div>
+      </div>
+
+      <div class="seq-body">
+        <div class="life" style="left:16.667%"></div>
+        <div class="life" style="left:50%"></div>
+        <div class="life" style="left:83.333%"></div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">confirm stopped<br><span class="sub">systemctl --user stop exocomp / powered off</span></div>
+          <div class="arrow" style="left:16.667%;width:33.333%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">exocomp restore --from &lt;kind:uri&gt;<br><span class="sub">--dest &lt;data dir&gt; · keyring + DB + secrets</span></div>
+          <div class="arrow" style="left:16.667%;width:66.667%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="note wait" style="left:16.667%">optional — <b>exocomp restore --from-litestream</b><br>the decrypt round-trip proves the replica bytes</div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">exocomp serve<br><span class="sub">the act that makes this host active</span></div>
+          <div class="arrow" style="left:16.667%;width:66.667%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="note right" style="right:16.667%">boot sweep retires interrupted rows<br>workflow sequencer resumes mid-flight</div>
+        </div>
+
+        <div class="msg">
+          <div class="note right" style="right:16.667%">the lease is acquired on this host's copy<br>it cannot fence a primary on another copy</div>
+        </div>
+
+        <div class="msg">
+          <div class="note wait" style="left:16.667%">keep the old primary from restarting serve<br>this copy has no lease in common</div>
+        </div>
+
+        <div class="msg">
+          <div class="note" style="left:16.667%">verify: <b>exocomp doctor</b> · <b>exocomp tui</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">
+    <span><b>This path restores a separate copy.</b> The lease is the shared-file guard in “Why a lease”; it cannot fence a primary on another copy, so step 1 stays true after the fact.</span>
+    <span class="cap-meta">docs / failover</span>
+  </div>
+</div>
+
+<script>
+  document.title = 'H=' + Math.ceil(document.querySelector('.shot').getBoundingClientRect().height);
+</script>

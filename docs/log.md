@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-11-08
+
+- **The diagrams are exocomp-branded images.** [Architecture overview](architecture/overview.md)
+  and [the reactive layer](architecture/reactive.md) lose their Mermaid and ASCII blocks to
+  generated figures; so do [the agent interface](design/agent-interface.md),
+  [provision-to-converge handoffs](guide/handoffs.md), [the TUI geometry](design/tui-system.md)
+  and [failover](operations/failover.md). The pages and their figures describe the same
+  mechanism. Sources and the render rig live under `.contrib/docs/assets/`; the WebP images are
+  `docs/design/assets/figures/`. Directory trees and code samples stay text.
+
 ## 2026-11-01
 
 - **Compose uses the passphrase host-key tier.** [Containers](operations/containers.md#compose-first-run)

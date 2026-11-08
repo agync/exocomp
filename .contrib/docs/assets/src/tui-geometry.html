@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>exocomp TUI geometry</title>
+<link rel="stylesheet" href="../shell.css">
+
+<div class="shot">
+  <div class="bar">
+    <div class="bar-l">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+        <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+      </svg>
+      <span class="word">exocomp</span>
+      <span class="chip">Terminal</span>
+      <span class="title">One grid, one fixed powerline</span>
+    </div>
+    <span class="meta">schematic · docs / design</span>
+  </div>
+
+  <div class="canvas">
+    <div class="term-grid">
+      <div class="dim-top">80 columns</div>
+      <div class="dim-line"></div>
+      <div class="term-side">
+        <span class="lab">24 rows</span>
+        <span class="vline"></span>
+      </div>
+
+      <div class="term">
+        <div class="term-bar">
+          <span><span class="accent">exocomp</span> · aurora</span>
+          <span>HH:MM UTC+11 · tick 2s</span>
+        </div>
+        <div class="term-body">
+          <div class="term-main">
+            <div class="zone">
+              <span class="k">Dashboard</span>
+              <span class="d">attention band · queue · running job</span>
+              <span class="sig" style="color:var(--wait)">NEEDS YOU</span>
+            </div>
+            <div class="zone">
+              <span class="k">Plan diff</span>
+              <span class="d">monospace alignment · redacted values</span>
+              <span class="sig" style="color:var(--ok)">+N ~N −N</span>
+            </div>
+            <div class="zone">
+              <span class="k">Form / wizard</span>
+              <span class="d">inputs · ordered steps</span>
+              <span class="sig" style="color:var(--accent-text)">STEP</span>
+            </div>
+            <div class="zone">
+              <span class="k">Log tail</span>
+              <span class="d">follow · pause · tail</span>
+              <span class="sig" style="color:var(--ok)">RUNNING</span>
+            </div>
+          </div>
+
+          <div class="powerline">
+            <span class="seg"><span class="dot"></span> RUNNING</span>
+            <span class="seg">BACKUPS <span class="dot"></span> NAS <span class="dot wait"></span> S3 STALE <span class="dot"></span> GIT</span>
+            <span class="seg">VERSION · APPROVALS</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">
+    <span><b>Row 24 is the contract.</b> The title bar, the re-flowing primary area and the powerline are one template at every size; the powerline never scrolls away.</span>
+    <span class="cap-meta">docs / terminal</span>
+  </div>
+</div>
+
+<script>
+  document.title = 'H=' + Math.ceil(document.querySelector('.shot').getBoundingClientRect().height);
+</script>

@@ -12,11 +12,9 @@ A webhook is the fourth headless client of the one queue. Nothing in this layer
 executes anything: it decides what an arriving event is allowed to enqueue, and
 records that decision whatever it turns out to be.
 
-```
-POST /hook/<token>  ──▶  normalize  ──▶  CEL rules  ──▶  guardrails  ──▶  queue
-                                                              │
-                                                              └──▶  approval ──▶ queue
-```
+<p><img src="../design/assets/figures/reactive-pipeline.webp" alt="Webhook ingress through normalization and CEL matching to guardrails and the queue, with a branch from guardrails to approval gates and back to the same queue; an outcomes legend lists ignored, matched, suppressed, gated, fired and error."></p>
+
+*Figure — the reactive pipeline. Guardrails decide what may be enqueued; every decision persists as one event row.*
 
 Every path ends in exactly one `event` row carrying an outcome, a reason, and
 the per-condition trace that produced them. An event that vanished because a

@@ -14,11 +14,11 @@ exocomp unites these into a single **ledger handoff workflow** (`exocomp handoff
 
 ## The provision → onboard → converge chain
 
-The provision workflow executes four sequenced steps under one job ID:
+The provision workflow executes four sequenced steps under one workflow ID; each step is an ordinary queue job in the step ledger:
 
-```
-[1. tofu apply] ──► [2. await SSH] ──► [3. host onboard] ──► [4. ansible playbook]
-```
+<p><img src="../design/assets/figures/provision-converge.webp" alt="Four-step chain: tofu apply, await SSH, host onboard and ansible playbook, under one workflow ID with a SQLite step ledger."></p>
+
+*Figure — the handoff chain. Each step is a queue job released only after the previous one succeeded.*
 
 1. **`tofu apply`**:
    Applies the workspace plan to create the virtual machine or instance. Declared non-sensitive outputs (such as IP addresses and hostnames) are captured automatically.

@@ -87,33 +87,16 @@ operator surface.
 
 ## 3. Target architecture
 
-```
-        workstation (operator workstation / agent host)
-        ┌───────────────┬──────────────┬───────────────┐
-        │ exocomp CLI   │ HTTP client  │ MCP client     │
-        │ (local/--remote)│ (curl/SDK) │ (bearer /mcp)  │
-        └───────┬───────┴──────┬───────┴───────┬────────┘
-                │  tailnet (bearer token + pinned cert / Tailscale Serve TLS)
-   server ─────┼──────────────┼───────────────┼──────────────────────
-        ┌───────▼──────────────▼───────────────▼────────┐
-        │  Decision 0009 token-gated listener (internal/web)  │  ← one auth story
-        │  /            (HTML, existing)                 │
-        │  /api/v1/...  (JSON, new)  ── requireAuth+scope │
-        │  POST /mcp    (MCP over HTTP, bearer+scope)    │
-        └───────────────────────┬────────────────────────┘
-                                ▼
-                    internal/service  ← ALL business logic (verbs)
-                                ▼
-             queue.Enqueue / EnqueueGated / Release  ← the one execution path
-                                ▼
-                    store · reactive · executor · secrets
-```
+<p><img src="assets/figures/agent-interface.webp" alt="Three programmatic faces — exocomp CLI, HTTP client and MCP client — reach one token-gated listener over the tailnet, then call the same internal/service write verbs, which enqueue on the one queue; store, reactive, executor and secrets sit below."></p>
+
+*Figure — one core, three programmatic faces. No face executes directly; every write enqueues.*
 
 ### 3.1 One operational core — extract `internal/service`
 
-Every programmatic face calls the **same** service verbs; none reaches the store or the queue
-directly. This is the load-bearing decision: it is what makes invariant 5 hold for agents, and
-it is what lets the CLI, the API, and MCP share one marshaller and one set of golden tests.
+Every programmatic face calls the **same** write verbs; reads go store-direct, and no face
+reaches the queue directly. This is the load-bearing decision: it is what makes invariant 5 hold
+for agents, and it is what lets the CLI, the API, and MCP share one marshaller and one set of
+golden tests.
 
 Proposed verbs (thin wrappers over today's `RunE` logic):
 
@@ -128,6 +111,9 @@ ListSchedules / ListRules / ListSilences / ListEvents / ExplainEvent
 ListSecretsMeta                             (metadata only — no plaintext code path)
 ListBackups / Health                        (doctor summary)
 ```
+
+Reads in that list project the store directly; only the write verbs (`PlanWorkspace`,
+`ApplyWorkspace`, `RunPlaybook`, `DecideApproval`) take the service path.
 
 The service package imports queue, store, reactive, executor, secrets — never `net/http`,
 `cobra`, or `templ`. Sink-time redaction (internal/queue/redact.go) and gate defaults are
