@@ -424,7 +424,7 @@ install_staged() {
     chmod 0600 "$dest/exocomp.db" "$dest/keyring.age" "$dest/MANIFEST.json"
 
     say "restored $dest from $2, sha256 verified"
-    echo "recovery.sh: host.key is NOT restored; this host reads secrets with the recovery identity until it is re-keyed"
+    echo "recovery.sh: host.key and recipients are NOT restored; install the recovery identity as $dest/host.key (0400), rebuild recipients with exocomp identity migrate --add-recipient host=<host-public> --add-recipient recovery=<recovery-public>, run exocomp identity migrate --rotate-host with serve stopped and the unit's host-key env, then verify with exocomp doctor"
 }
 
 # json_str prints the first string value of a key in a pretty-printed JSON

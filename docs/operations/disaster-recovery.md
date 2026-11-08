@@ -9,7 +9,8 @@ tags: [operations, recovery, backup]
 # Disaster recovery
 
 The design's headline property: **a printed kit plus any one backup target recovers
-everything, with no vendor, no internet, and no exocomp code required.** This page is the
+everything.** The restore chain needs no vendor, no internet, and no exocomp code; bringing
+the daemon back needs the deployment image and the re-key step below. This page is the
 runbook and the chain behind it.
 
 ## What is backed up
@@ -166,31 +167,22 @@ the stored ref, or says it was never recorded.
 
 You have a printed recovery kit and any one backup target.
 
-```mermaid
-sequenceDiagram
-    actor Op as Operator
-    participant NH as New host (bare)
-    participant T as Any backup target
-    participant C as exocompd
+<p><img src="../design/assets/figures/recovery-sequence.webp" alt="Sequence: the operator runs recovery.sh on a bare host, supplies the target URI and recovery key, fetches keyring.age, derives the restic password, restores the store, installs the Quadlet unit, installs the recovery identity as the temporary host key, recreates the recipient list from the card's public keys, runs exocomp identity migrate --rotate-host with serve stopped, starts the service, and verifies with doctor and the TUI."></p>
 
-    Op->>NH: recovery.sh --from <target> --identity <key>
-    Note over NH: loads podman + the image<br/>NO exocompd running yet
-    NH->>Op: prompt: backup target URI?
-    Op->>NH: target URI from the kit
-    NH->>T: fetch keyring.age (credential supplied by the operator; on the kit)
-    NH->>Op: prompt: paste or scan the recovery age key
-    Op->>NH: AGE-SECRET-KEY-1…
-    NH->>NH: age -d keyring.age → DEK
-    NH->>NH: HKDF(DEK, "restic-repo:<target-id>") → RESTIC_PASSWORD
-    NH->>T: restic restore latest --target <data volume>
-    NH->>NH: install the Quadlet unit, enable it
-    C->>C: boot, try to unwrap the DEK via the host key… ABSENT
-    C->>Op: "no host identity — rewrap now?"
-    Op->>C: yes
-    C->>C: mint a new host identity, wrap the DEK, TPM-seal, add a keyring row
-    C->>C: revoke the old host recipient, rebuild schedules from the DB
-    C->>Op: N runbooks, M schedules, K workspaces, last job <ts>
+*Figure — recovery. One backup target and the printed age key rebuild the data dir; the operator installs the unit, installs the recovery key as the temporary host key, recreates the recipient list, and rotates the host identity. The restore chain needs no registry or exocomp code; the re-key and start need the deployment.*
+
+`recovery.sh` rebuilds the data dir but does not install the daemon, and it restores neither `host.key` nor the public `recipients` file. Load the image, install and enable the Quadlet unit. With `serve` stopped, install the printed recovery identity as `<data-dir>/host.key` (mode 0400), recreate `recipients` from the host and recovery public keys printed in the card's section 2, and run `exocomp identity migrate --rotate-host` with the unit's `EXOCOMP_HOST_KEY_PASSPHRASE_FILE` so the new key stays in the same at-rest tier:
+
+```sh
+install -m 0400 recovery.key <data-dir>/host.key
+exocomp identity migrate \
+  --add-recipient host=<host-public> \
+  --add-recipient recovery=<recovery-public>
+EXOCOMP_HOST_KEY_PASSPHRASE_FILE=<unit path> \
+  exocomp identity migrate --rotate-host
 ```
+
+The rotation removes the temporary plaintext key; if it fails, remove that key before retrying. Then start the service.
 
 Then verify rather than assume:
 
@@ -234,17 +226,19 @@ host reached only over the network, for instance.
 
 ## The recovery card
 
-The card is the manual path: the same chain with no exocomp binary anywhere in it, using
-only `age`, `openssl`, and `restic`. A git target's card uses `git`, `age` and `zstd`
-instead, or `gzip` for a `.tar.gz` snapshot. It concatenates the `snapshot-*.age.partNN`
+The card's restore chain (steps 1-4) is the manual path: no exocomp binary anywhere in it,
+using only `age`, `openssl`, and `restic`. Steps 5-7 install the deployment and re-key with
+its binary. A git target's card uses `git`, `age` and `zstd` instead, or `gzip` for a
+`.tar.gz` snapshot. It concatenates the `snapshot-*.age.partNN`
 parts in order and decrypts the result, as the leg wrote them. `exocomp restore` from a git
 target also shells out to `zstd` for a `.tar.zst` snapshot and refuses when it is not on
 PATH, so a recovery host without the image needs `zstd` installed.
 
-**The card's literal command text is a build artifact, not documentation.** It is rendered
-by the kit renderer, and the exact rendered text is **executed in CI** on a clean image
-against a fixture backup, with the derived restic password diffed against `exocompd`'s own
-derivation. This rule exists because an earlier card did not run as written — the
+**The card's restore-chain command text (steps 1-4) is a build artifact, not
+documentation.** It is rendered by the kit renderer, and that exact text is **executed in
+CI** on a clean image against a fixture backup, with the derived restic password diffed
+against `exocompd`'s own derivation. Steps 5-7 use the deployment's binary; the secrets
+tests cover the rotation and the card test asserts the commands. This rule exists because an earlier card did not run as written — the
 pipeline fed an `openssl kdf` invocation that does not read stdin, and the `-kdfopt`
 spellings were mixed. A DR card whose commands do not run is worse than no card.
 
@@ -256,7 +250,10 @@ Treat the printed card as authoritative over this page. The chain it automates i
    and the target id are printed on the card, so the derivation is reproducible by hand.
 3. `restic -r <target URI> restore latest --target <data volume>`, using the read-only
    storage credential you supply (printed on the card).
-4. Start the service, then `exocomp doctor`.
+4. Install the deployment, install the recovery identity as the temporary host key, and
+   recreate `recipients` from the card's host and recovery public keys (card step 5).
+5. Re-key the host identity in the same at-rest tier (card step 6).
+6. Start the service and run `exocomp doctor` (card step 7).
 
 The card also carries the QR-coded recovery key, the target URIs, the fingerprints of every
 active recipient (so the operator can tell which YubiKey), the healthchecks ping URL, the
@@ -279,7 +276,7 @@ database has no recovery-kind keyring row.
 | Recovery kit lost **and** host key lost | Unrecoverable, by design; the same property any real vault has |
 | DB corrupt, backups fine | `exocomp restore --from <kind:uri> --dest <fresh data dir>` restores the newest snapshot — for a restic kind, an older one by id with `--snapshot <id>` (full or unambiguous prefix; a git target keeps exactly one snapshot, so it has no selector). It refuses a destination that already holds a keyring. There is no in-place restore and no startup `PRAGMA integrity_check` gate |
 | One backup target unreachable | Others proceed and each gets its own `backup_run` row; there is no per-target alerting or last-success-age view in `doctor` |
-| `exocompd` will not build or run at all | The card's manual path uses only `age`, `openssl`, and `restic`, or `git`, `age` and `zstd` for a git target. The bundles are plain git bundles and `exocomp.db` is plain SQLite |
+| `exocompd` will not build or run at all | The card's restore chain uses only `age`, `openssl`, and `restic`, or `git`, `age` and `zstd` for a git target; steps 5-7 need the deployment's binary. The bundles are plain git bundles and `exocomp.db` is plain SQLite |
 
 ## RPO and RTO
 
