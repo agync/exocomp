@@ -97,9 +97,10 @@ substitute for confirming the mistake.
    ```
 
    On this path the standby opens its own restored copy of `exocomp.db`, so the lease row is
-   that copy's and is free or stale; `serve` acquires it and proceeds. The live-holder refusal
-   and `--force-lease` are the shared-file case in "Why a lease"; they are not part of this
-   procedure.
+   that copy's. It is usually free or stale. A Litestream fast-forward can carry a lease still
+   inside its TTL; on this copy no other daemon opens it, so wait out the TTL, or use
+   `--force-lease` deliberately once the old primary is confirmed stopped. The shared-file
+   live-holder refusal is in "Why a lease"; it is not part of this procedure.
 
 5. **Interrupted work re-drives itself, mostly.** The boot sweep retires the rows the dead
    primary left `queued`/`running` to `interrupted`, and the workflow sequencer's first pass
