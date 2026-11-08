@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>exocomp provision to converge</title>
+<link rel="stylesheet" href="../shell.css">
+
+<div class="shot">
+  <div class="bar">
+    <div class="bar-l">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+        <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+      </svg>
+      <span class="word">exocomp</span>
+      <span class="chip">Handoffs</span>
+      <span class="title">Provision, wait, onboard, converge</span>
+    </div>
+    <span class="meta">docs / guide</span>
+  </div>
+
+  <div class="canvas">
+    <div class="pipe steps">
+
+      <div class="box">
+        <div class="step">01 · Apply</div>
+        <div class="name">tofu apply</div>
+        <div class="desc">the workspace plan creates<br>the VM or instance</div>
+        <div class="proof">non-sensitive outputs<br>captured for the next step</div>
+      </div>
+
+      <div class="harrow">
+        <svg viewBox="0 0 40 16"><path d="M0 8h32M26 3l6 5-6 5"/></svg>
+      </div>
+
+      <div class="box">
+        <div class="step">02 · Wait</div>
+        <div class="name">await SSH</div>
+        <div class="desc">poll the new address until<br>the SSH port answers</div>
+        <div class="proof">bounded by a<br>configurable timeout</div>
+      </div>
+
+      <div class="harrow">
+        <svg viewBox="0 0 40 16"><path d="M0 8h32M26 3l6 5-6 5"/></svg>
+      </div>
+
+      <div class="box">
+        <div class="step">03 · Onboard</div>
+        <div class="name">host onboard</div>
+        <div class="desc">fleet identity key presented,<br>host key verified</div>
+        <div class="proof">fingerprint registered<br>in known_hosts</div>
+      </div>
+
+      <div class="harrow">
+        <svg viewBox="0 0 40 16"><path d="M0 8h32M26 3l6 5-6 5"/></svg>
+      </div>
+
+      <div class="box">
+        <div class="step">04 · Converge</div>
+        <div class="name">ansible playbook</div>
+        <div class="desc">targets the synthetic<br>inventory tf:&lt;workspace&gt;</div>
+        <div class="proof">no copy-pasted<br>IP addresses</div>
+      </div>
+
+      <div class="note-line">
+        <b>One workflow ID, four queue jobs.</b> Each step is an ordinary job in the ledger; an interrupted chain resumes from the first unfinished step on the next boot, and a completed apply is never run twice.
+      </div>
+
+    </div>
+  </div>
+
+  <div class="cap">
+    <span><b>Provision and converge are one workflow.</b> The handoff is a ledger, not a shell script: each step is a queue job released only after the previous one succeeded.</span>
+    <span class="cap-meta">Decision 0008</span>
+  </div>
+</div>
+
+<script>
+  document.title = 'H=' + Math.ceil(document.querySelector('.shot').getBoundingClientRect().height);
+</script>

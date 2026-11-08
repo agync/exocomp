@@ -1,0 +1,183 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>exocomp architecture overview</title>
+<link rel="stylesheet" href="../shell.css">
+
+<div class="shot">
+  <div class="bar">
+    <div class="bar-l">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+        <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+      </svg>
+      <span class="word">exocomp</span>
+      <span class="chip">Architecture</span>
+      <span class="title">One binary, one queue, one data dir</span>
+    </div>
+    <span class="meta">docs / architecture</span>
+  </div>
+
+  <div class="canvas">
+    <div class="layers">
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Clients</div>
+          <div class="n">four faces<br>+ ingress</div>
+        </div>
+        <div class="row five">
+          <div class="tile">
+            <div class="name">TUI</div>
+            <div class="desc">Bubble Tea v2<br>local + SSH</div>
+          </div>
+          <div class="tile">
+            <div class="name">Web</div>
+            <div class="desc">templ + vanilla JS<br>go:embed</div>
+          </div>
+          <div class="tile deferred">
+            <div class="name">Desktop</div>
+            <div class="desc">Wails<br>deferred</div>
+          </div>
+          <div class="tile">
+            <div class="name">CLI / scripts</div>
+            <div class="desc">exocomp<br>local + remote</div>
+          </div>
+          <div class="tile">
+            <div class="name">Webhooks</div>
+            <div class="desc">Alertmanager<br>healthchecks<br>generic (Kuma/GH)<br>loopback listener</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vflow">
+        <svg viewBox="0 0 20 34"><path d="M10 0v26M4 21l6 6 6-6"/></svg>
+        <span>operator faces → one API · hooks → rules</span>
+      </div>
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">API</div>
+          <div class="n">token-gated listener<br>TCP + bearer</div>
+        </div>
+        <div class="api-bar">
+          <span class="name">HTTP/JSON API</span>
+          <span class="desc">thin over internal/service · reads go store-direct</span>
+        </div>
+      </div>
+
+      <div class="vflow">
+        <svg viewBox="0 0 20 34"><path d="M10 0v26M4 21l6 6 6-6"/></svg>
+        <span>enqueue only</span>
+      </div>
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Core</div>
+          <div class="n">exocompd<br>one Go process</div>
+        </div>
+        <div class="core-grid">
+          <div class="core-side">
+            <div class="tile">
+              <div class="name">Rules + guardrails</div>
+              <div class="desc">cel-go · cooldown<br>cap · dedup · kill switch</div>
+            </div>
+            <div class="tile">
+              <div class="name">Approval gates</div>
+              <div class="desc">HMAC single-use<br>fail-closed TTL</div>
+            </div>
+            <div class="tile">
+              <div class="name">Secrets envelope</div>
+              <div class="desc">age → DEK<br>HKDF subkeys</div>
+            </div>
+          </div>
+          <div class="core-mid">
+            <div class="tile is-core">
+              <div class="name">Job queue + scheduler</div>
+              <div class="desc">state machine · concurrency keys<br>cron · the only executor</div>
+            </div>
+            <div class="tile">
+              <div class="name">exocomp.db</div>
+              <div class="desc">SQLite · WAL · job_event<br>schedules · ledgers</div>
+            </div>
+          </div>
+          <div class="core-side">
+            <div class="tile">
+              <div class="name">Tofu state backend</div>
+              <div class="desc">GET / POST / LOCK / UNLOCK<br>loopback, per-workspace bearer</div>
+            </div>
+            <div class="tile">
+              <div class="name">Backup engine</div>
+              <div class="desc">staging tree · 3-leg fan-out<br>retention · verification</div>
+            </div>
+            <div class="tile">
+              <div class="name">Executor drivers</div>
+              <div class="desc">disabled · nono<br>container</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vflow">
+        <svg viewBox="0 0 20 34"><path d="M10 0v26M4 21l6 6 6-6"/></svg>
+        <span>pinned subprocesses</span>
+      </div>
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Tools</div>
+          <div class="n">pinned · exit code<br>is truth</div>
+        </div>
+        <div class="row three">
+          <div class="tile">
+            <div class="name">ansible-core</div>
+            <div class="desc">ansible-playbook<br>plays · ad-hoc · check</div>
+          </div>
+          <div class="tile">
+            <div class="name">opentofu</div>
+            <div class="desc">plan · apply<br>state over HTTP</div>
+          </div>
+          <div class="tile">
+            <div class="name">restic · sops · age · git</div>
+            <div class="desc">backups · secrets<br>sources · recovery</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vflow">
+        <svg viewBox="0 0 20 34"><path d="M10 0v26M4 21l6 6 6-6"/></svg>
+        <span>identical bytes, three legs</span>
+      </div>
+
+      <div class="layer">
+        <div class="rail">
+          <div class="k">Legs</div>
+          <div class="n">each independent<br>no registry</div>
+        </div>
+        <div class="row three">
+          <div class="tile">
+            <div class="name">NAS</div>
+            <div class="desc">SMB / NFS mount</div>
+          </div>
+          <div class="tile">
+            <div class="name">S3-compatible</div>
+            <div class="desc">object storage</div>
+          </div>
+          <div class="tile">
+            <div class="name">private GitHub</div>
+            <div class="desc">age-encrypted archives</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="cap">
+    <span><b>Every path enqueues.</b> Guardrails live in the queue, not in configuration, so a webhook, a schedule and a keypress cannot fork a second execution path.</span>
+    <span class="cap-meta">Decision 0001 · 0004</span>
+  </div>
+</div>
+
+<script>
+  document.title = 'H=' + Math.ceil(document.querySelector('.shot').getBoundingClientRect().height);
+</script>

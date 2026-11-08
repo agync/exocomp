@@ -16,20 +16,9 @@ It shares an exact operational and security parity with the Web UI: approvals, r
 
 The TUI targets a standard **80 columns by 24 rows** terminal grid:
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ [Title / Context Bar]                                                        │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│ [Primary Content Area]                                                       │
-│   • Dashboard cards / queue items                                            │
-│   • Plan diff with monospace alignment                                      │
-│   • Form inputs / wizard steps                                               │
-│                                                                              │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ [Row 24: Powerline Status Strip]                                             │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+<p><img src="assets/figures/tui-geometry.webp" alt="Schematic of the 80-column by 24-row terminal: title/context bar, re-flowing primary content area for dashboard, plan diff, forms and log tail, and the fixed row-24 powerline."></p>
+
+*Figure — the terminal grid, schematic rather than a live capture. The title bar, primary area and powerline are one template at every size.*
 
 ## Standard keymap
 
@@ -46,10 +35,13 @@ The TUI targets a standard **80 columns by 24 rows** terminal grid:
 
 ## The powerline status strip (Row 24)
 
-Row 24 is fixed across all screens and mirrors the Web UI's top powerline strip:
+Row 24 is fixed across all screens and mirrors the Web UI's powerline strip:
 - **Left segment**: Active service status (`RUNNING`, `CORDONED`, `PAUSED`).
 - **Center segment**: Backup freshness indicators (NAS, S3, Git).
 - **Right segment**: Active daemon version and pending approval count.
+
+This is the target layout. The shipped 80x24 frame currently renders a dead-man/notify/version
+footer there; the grid and row placement are the same.
 
 ## TUI colors and Lip Gloss styles
 

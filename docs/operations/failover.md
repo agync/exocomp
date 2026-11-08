@@ -32,10 +32,14 @@ a wall-clock TTL. The active daemon holds it and renews it; a starting daemon th
 **live** lease held by another holder refuses to become active and names who holds it. Both
 guards stay: the flock is the cheap same-host answer, the lease the cross-host one.
 
-```
-serve.lock (flock)   → one daemon per HOST
-serve_lease (row)    → one active daemon across all hosts opening the SAME file
-```
+| Guard | Scope | What it settles |
+|---|---|---|
+| `serve.lock` (flock) | one daemon per host | a local file lock plus a pid-liveness check |
+| `serve_lease` (row) | one active daemon across hosts | the same SQLite file opened by more than one host |
+
+In the shared-file case, startup has three outcomes: a free or stale lease is acquired; a live
+lease held by another holder refuses and names the holder and last renew; `--force-lease` takes
+it over only when the holder cannot be running. Do not reach for it to clear a message.
 
 **The lease does not reach a Litestream replica or a restic restore.** Each is its own separate
 copy of `exocomp.db` — the lease row travels with the bytes, but stops updating the instant the
@@ -54,29 +58,9 @@ substitute for confirming the mistake.
 
 ## Procedure
 
-```mermaid
-sequenceDiagram
-    actor Op as Operator
-    participant P as Primary (down)
-    participant SB as Standby host
-    participant S as Shared store
+<p><img src="../design/assets/figures/failover-sequence.webp" alt="Sequence: the operator confirms the primary stopped, restores the standby with exocomp restore, optionally fast-forwards from Litestream, starts the daemon, and verifies with doctor and the TUI; this path restores a separate copy."></p>
 
-    Op->>P: confirm stopped (systemctl stop / powered off)
-    Op->>SB: restic restore latest  (keyring + DB + secrets)
-    opt seconds of RPO matter and Litestream was replicating
-        Op->>SB: exocomp restore --from-litestream …
-        SB->>SB: decrypt round-trip verifies the replica bytes
-    end
-    Op->>SB: exocomp serve
-    SB->>S: acquire the active lease
-    alt lease is free or stale
-        S-->>SB: acquired — standby is now active
-        SB->>SB: boot sweep + resume interrupted workflows
-    else lease still LIVE (primary not actually dead)
-        S-->>SB: REFUSED, names the holder + last renew
-        Note over Op,SB: stop the primary for real, then retry;<br/>--force-lease only once it is gone
-    end
-```
+*Figure — the procedure. This path restores a separate copy; the lease is the shared-file guard in “Why a lease”.*
 
 1. **Confirm the primary is stopped.** `systemctl --user stop exocomp` on it, or confirm it is
    powered off / partitioned. This is the step the fence cannot do for you.
@@ -112,18 +96,10 @@ sequenceDiagram
    exocomp serve
    ```
 
-   On startup it acquires the active lease **before** touching a single job row. Three outcomes:
-
-   - **Free or stale lease** → acquired. The standby is now the one active daemon. It prints
-     `active lease acquired (holder …)` and proceeds.
-   - **Live lease held by another holder** → it **refuses** and names the holder and when the
-     lease was last renewed. This is the fence catching a primary that is not actually dead (or
-     a second operator racing you). Go back to step 1. Do not reach for `--force-lease` to make
-     the message go away.
-   - You are certain the named holder is gone (crashed without releasing, TTL not yet lapsed)
-     and cannot wait out the TTL → `exocomp serve --force-lease` takes it over. Use this only
-     when the holder truly cannot be running, because it is the one path that overrides the
-     split-brain guard.
+   On this path the standby opens its own restored copy of `exocomp.db`, so the lease row is
+   that copy's and is free or stale; `serve` acquires it and proceeds. The live-holder refusal
+   and `--force-lease` are the shared-file case in "Why a lease"; they are not part of this
+   procedure.
 
 5. **Interrupted work re-drives itself, mostly.** The boot sweep retires the rows the dead
    primary left `queued`/`running` to `interrupted`, and the workflow sequencer's first pass
@@ -138,7 +114,7 @@ sequenceDiagram
 This self-healing needs the primary and the standby to open the **same** `exocomp.db`. If the old
 primary comes back — a reboot, a healed partition — while the standby is active on that shared
 file, it tries to renew or re-acquire the lease and finds the standby holding a live one. A
-**starting** primary refuses exactly as in step 4. A primary that was mid-renew when it was
+**starting** primary refuses exactly as in the shared-file outcomes in "Why a lease". A primary that was mid-renew when it was
 fenced (you ran `--force-lease`) discovers on its next renew that the lease is no longer its own
 and **stands down**, running the same graceful stop a `SIGTERM` triggers. Either way, only one
 daemon stays active against the store.

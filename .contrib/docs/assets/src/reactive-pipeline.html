@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>exocomp reactive pipeline</title>
+<link rel="stylesheet" href="../shell.css">
+
+<div class="shot">
+  <div class="bar">
+    <div class="bar-l">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+        <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+      </svg>
+      <span class="word">exocomp</span>
+      <span class="chip">Reactive</span>
+      <span class="title">A webhook is a decision, not an execution</span>
+    </div>
+    <span class="meta">docs / architecture</span>
+  </div>
+
+  <div class="canvas">
+    <div class="pipe">
+
+      <div class="box">
+        <div class="step">01 · Ingress</div>
+        <div class="name">POST /hook/&lt;token&gt;</div>
+        <div class="desc">token derived, not stored<br>20 hex · rotation invalidates</div>
+      </div>
+
+      <div class="harrow">
+        <svg viewBox="0 0 40 16"><path d="M0 8h32M26 3l6 5-6 5"/></svg>
+      </div>
+
+      <div class="box">
+        <div class="step">02 · Normalize</div>
+        <div class="name">One event shape</div>
+        <div class="desc">source · kind · name · status<br>severity · host · labels · trace</div>
+      </div>
+
+      <div class="harrow">
+        <svg viewBox="0 0 40 16"><path d="M0 8h32M26 3l6 5-6 5"/></svg>
+      </div>
+
+      <div class="box">
+        <div class="step">03 · Match</div>
+        <div class="name">CEL rules</div>
+        <div class="desc">sandboxed, non-Turing-complete<br>hard time budget</div>
+      </div>
+
+      <div class="harrow">
+        <svg viewBox="0 0 40 16"><path d="M0 8h32M26 3l6 5-6 5"/></svg>
+      </div>
+
+      <div class="box">
+        <div class="step">04 · Guardrails</div>
+        <div class="name">Before anything runs</div>
+        <div class="desc">silence · dedup · cooldown · cap<br>ledgers are SQLite rows</div>
+      </div>
+
+      <div class="harrow">
+        <svg viewBox="0 0 40 16"><path d="M0 8h32M26 3l6 5-6 5"/></svg>
+      </div>
+
+      <div class="box">
+        <div class="step">05 · Enqueue</div>
+        <div class="name">The one queue</div>
+        <div class="desc">a destructive kind becomes<br>a job row in awaiting_approval</div>
+      </div>
+
+      <div class="branch-down">
+        <svg viewBox="0 0 20 42"><path d="M10 0v34M4 28l6 6 6-6"/></svg>
+        <span>destructive kinds only</span>
+      </div>
+
+      <div class="branch-box">
+        <div class="name">Approval gates</div>
+        <div class="desc">HMAC single-use · fail-closed TTL<br>ntfy · TUI · web decision</div>
+      </div>
+
+      <div class="branch-right">
+        <svg viewBox="0 0 40 16"><path d="M0 8h32M26 3l6 5-6 5"/></svg>
+      </div>
+
+      <div class="branch-target">same queue<br><span class="mono" style="font-size:16px;color:var(--ink-400)">released on approval</span></div>
+
+      <div class="outcomes">
+        <span class="lab">Every event persists with one outcome</span>
+        <span class="outcome">ignored</span>
+        <span class="outcome">matched</span>
+        <span class="outcome wait">suppressed</span>
+        <span class="outcome wait">gated</span>
+        <span class="outcome ok">fired</span>
+        <span class="outcome fail">error</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="cap">
+    <span><b>Every path ends in one event row.</b> Outcome, reason, and the per-condition trace are persisted even when a guardrail suppresses the action, so “why didn’t my rule fire?” is a query.</span>
+    <span class="cap-meta">docs / reactive</span>
+  </div>
+</div>
+
+<script>
+  document.title = 'H=' + Math.ceil(document.querySelector('.shot').getBoundingClientRect().height);
+</script>
