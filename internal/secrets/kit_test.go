@@ -38,7 +38,15 @@ func TestKitRendersSecretKeyOnlyAtInit(t *testing.T) {
 			t.Errorf("init kit omits public key of %s", r.Label)
 		}
 	}
-	for _, phrase := range []string{"HKDF-SHA256", "age -d -i recovery.key keyring.age", "restic"} {
+	for _, phrase := range []string{
+		"HKDF-SHA256",
+		"age -d -i recovery.key keyring.age",
+		"install -m 0400 recovery.key",
+		"--add-recipient host=<host-public>",
+		"EXOCOMP_HOST_KEY_PASSPHRASE_FILE=<unit path>",
+		"exocomp identity migrate --rotate-host",
+		"restic",
+	} {
 		if !strings.Contains(minted, phrase) {
 			t.Errorf("init kit omits %q", phrase)
 		}

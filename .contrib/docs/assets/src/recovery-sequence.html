@@ -1,0 +1,109 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>exocomp recovery sequence</title>
+<link rel="stylesheet" href="../shell.css">
+
+<div class="shot">
+  <div class="bar">
+    <div class="bar-l">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+        <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+      </svg>
+      <span class="word">exocomp</span>
+      <span class="chip">Recovery</span>
+      <span class="title">A printed kit and any one target</span>
+    </div>
+    <span class="meta">docs / disaster recovery</span>
+  </div>
+
+  <div class="canvas">
+    <div class="seq three">
+      <div class="seq-head">
+        <div class="p">
+          <div class="k">Actor</div>
+          <div class="n">Operator</div>
+          <div class="s">printed kit + age key</div>
+        </div>
+        <div class="p">
+          <div class="k">Host</div>
+          <div class="n">New host</div>
+          <div class="s">bare · recovery.sh</div>
+        </div>
+        <div class="p">
+          <div class="k">Target</div>
+          <div class="n">Any one leg</div>
+          <div class="s">NAS · S3 · GitHub</div>
+        </div>
+      </div>
+
+      <div class="seq-body">
+        <div class="life" style="left:16.667%"></div>
+        <div class="life" style="left:50%"></div>
+        <div class="life" style="left:83.333%"></div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">recovery.sh --from &lt;target&gt;<br><span class="sub">--identity &lt;key&gt; · rebuilds the data dir</span></div>
+          <div class="arrow" style="left:16.667%;width:33.333%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(50% + 10px)">fetch keyring.age<br><span class="sub">read-only credential from the kit</span></div>
+          <div class="arrow" style="left:50%;width:33.333%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="note" style="left:50%">age -d → <b>DEK</b> · HKDF → <b>RESTIC_PASSWORD</b></div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(50% + 10px)">restore latest<br><span class="sub">MANIFEST.json + tags verified</span></div>
+          <div class="arrow" style="left:50%;width:33.333%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="note wait" style="left:50%"><b>host.key is NOT restored</b><br>secrets use recovery identity until re-keyed</div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">load the image · install the Quadlet unit<br><span class="sub">the deployment, not recovery.sh</span></div>
+          <div class="arrow" style="left:16.667%;width:33.333%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">install recovery.key as &lt;data-dir&gt;/host.key<br><span class="sub">0400 · serve stopped</span></div>
+          <div class="arrow" style="left:16.667%;width:33.333%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">exocomp identity migrate --add-recipient<br><span class="sub">host=… · recovery=… · from the card</span></div>
+          <div class="arrow" style="left:16.667%;width:33.333%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">exocomp identity migrate --rotate-host<br><span class="sub">unit env · mint host.key.age · remove plaintext</span></div>
+          <div class="arrow" style="left:16.667%;width:33.333%"></div>
+        </div>
+
+        <div class="msg">
+          <div class="label" style="left:calc(16.667% + 10px)">start the service<br><span class="sub">schedules rebuild from the DB</span></div>
+          <div class="arrow" style="left:16.667%;width:33.333%"></div>
+        </div>
+
+        <div class="msg left">
+          <div class="label" style="left:calc(16.667% + 10px)">exocomp doctor · exocomp tui<br><span class="sub">verify, don't assume</span></div>
+          <div class="arrow" style="left:16.667%;width:33.333%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">
+    <span><b>The restore chain needs no registry or exocomp code.</b> One target plus the printed age key rebuilds the data dir; the operator installs the unit, rebuilds the recipients, and rotates the host identity before starting it.</span>
+    <span class="cap-meta">docs / recovery</span>
+  </div>
+</div>
+
+<script>
+  document.title = 'H=' + Math.ceil(document.querySelector('.shot').getBoundingClientRect().height);
+</script>
