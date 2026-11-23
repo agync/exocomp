@@ -30,7 +30,10 @@ The target platform includes the Fedora/RHEL family, enforcing. No example anywh
 bundle may depend on permissive mode.
 
 - **Labels everywhere.** The data volume is declared via a Quadlet `.volume` unit (implicit
-  relabel) and every documented bind mount carries `:Z`.
+  relabel). Bind mounts take the private `:Z` by default; a source shared with another
+  container or the host takes `:z` (the compose passphrase, a dedicated resolver
+  `nsswitch.conf` copy),
+  because a private relabel would change it for the other reader.
 - **The NAS leg is the sharp edge.** Network filesystems cannot be relabelled — `:Z` fails
   on NFS and CIFS. The installer sets and verifies the `virt_use_nfs` / `virt_use_samba`
   booleans, and the mount canary turns an AVC-denial `EACCES` into a loud pre-backup failure

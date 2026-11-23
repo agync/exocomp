@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-11-23
+
+- **The compose passphrase docs state the actual boundary.** [Containers](operations/containers.md#compose-first-run)
+  names the compose file's directory as the project-name prefix and says
+  `recovery-kit` re-renders the structure but not the recovery secret key; the
+  [threat model](security/threat-model.md) places the 0644 passphrase file inside its
+  0700 directory, and the [platform contract](architecture/platform-contract.md) states
+  when a bind mount takes the shared `:z` instead of `:Z`. The compose file now says the
+  plaintext key stays until `identity migrate --rotate-host` replaces it.
+
 ## 2026-11-08
 
 - **The diagrams are exocomp-branded images.** [Architecture overview](architecture/overview.md)
@@ -27,7 +37,7 @@ Newest first.
 
 ## 2026-11-01
 
-- **Compose uses the passphrase host-key tier.** [Containers](operations/containers.md#compose-first-run)
+- **The compose docs describe the passphrase host-key tier.** [Containers](operations/containers.md#compose-first-run)
   documents the bind-mounted passphrase and the first-run verbs; the
   [platform contract](architecture/platform-contract.md) and
   [threat model](security/threat-model.md) now describe the passphrase tier
