@@ -29,8 +29,9 @@ services:
     # and passphrase `up` will:
     #   docker compose -f packaging/compose.yaml run --rm exocomp --no-input token new web
     #   docker compose -f packaging/compose.yaml run --rm exocomp setup
-    # An existing plaintext host.key migrates once the passphrase exists; stop the
-    # stack first (identity migrate refuses while serve holds the lock):
+    # An existing plaintext host.key stays plaintext until identity migrate
+    # --rotate-host replaces it with a newly minted passphrase-wrapped key.
+    # Stop the stack first (identity migrate refuses while serve holds the lock):
     #   docker compose -f packaging/compose.yaml down
     #   docker compose -f packaging/compose.yaml run --rm exocomp identity migrate --rotate-host
     command: ["serve", "--port", "8643", "--web-addr", "0.0.0.0:8642"]

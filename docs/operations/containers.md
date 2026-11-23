@@ -84,7 +84,8 @@ podman run --rm --userns keep-id -v systemd-exocomp:/var/lib/exocomp \
 ```
 
 The volume name is the generated one for the Quadlet, created when
-`exocomp-volume.service` starts. Compose prefixes the project directory (`packaging_exocomp-state` for the checkout path). The unit runs
+`exocomp-volume.service` starts. Compose prefixes the compose file's directory
+(`packaging_exocomp-state` for `packaging/compose.yaml`). The unit runs
 with `UserNS=keep-id`, so every command that writes to the volume has to as well. A volume
 first written without it belongs to a different user, and `serve` then fails with
 `open /var/lib/exocomp/serve.lock: permission denied`.
@@ -152,9 +153,9 @@ image first with `docker compose -f packaging/compose.yaml pull`.
 The `z` relabel is a permanent change to the file's SELinux type (`container_file_t`,
 shared), which is why it is a dedicated passphrase file rather than something reused.
 
-An install that already has a plaintext `host.key` in its volume migrates once the
-passphrase file exists. Stop the stack first: `identity migrate` refuses while `serve`
-holds the lock.
+An install that already has a plaintext `host.key` in its volume keeps using it until
+`identity migrate --rotate-host` replaces it with a newly minted passphrase-wrapped
+key. Stop the stack first: `identity migrate` refuses while `serve` holds the lock.
 
 ```sh
 docker compose -f packaging/compose.yaml down
@@ -164,8 +165,10 @@ docker compose -f packaging/compose.yaml up -d
 
 `--rotate-host` mints a new host identity, re-wraps the keyring to it and removes the
 plaintext `host.key`; `exocomp doctor` then reports `passphrase-wrapped`. The generation
-bump makes the printed recovery kit stale, so reprint it with
-`exocomp recovery-kit` ([disaster recovery](disaster-recovery.md)).
+bump makes the printed kit's version line stale: `exocomp recovery-kit` re-renders the
+card's structure — the current generation, recipients, fingerprints, salt and restore
+recipe — but not the recovery secret key, which is printed once and never stored. Keep
+the printed page ([disaster recovery](disaster-recovery.md)).
 
 On a Podman host, run the Compose file through podman's Docker-compatible socket rather
 than `podman-compose`:
