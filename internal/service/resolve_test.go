@@ -1,7 +1,9 @@
 package service_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -178,5 +180,85 @@ func TestResolveSourceNameCharset(t *testing.T) {
 		if _, _, err := svc.ResolveSourcePlaybook(context.Background(), "", name, "site.yml"); err == nil {
 			t.Errorf("source name %q was accepted", name)
 		}
+	}
+}
+
+// TestResolveStandingInventorySourceLinkedAndConfined proves source-linked
+// static inventories resolve inside their checkout root, reject escapes, and
+// distinguish source-linked inventories from materialized artifacts.
+func TestResolveStandingInventorySourceLinkedAndConfined(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	dataDir := t.TempDir()
+	checkout := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(checkout, "inventory"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	invPath := filepath.Join(checkout, "inventory", "hosts.yml")
+	if err := os.WriteFile(invPath, []byte("all:\n  hosts:\n    node1:\n"), 0o600); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+	src, err := st.CreateSource(ctx, store.Source{
+		Name: "proj", Kind: store.SourcePath, URI: checkout, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+	if _, err := st.CreateInventory(ctx, store.Inventory{
+		Name: "proj-inv", SourceID: &src.ID, Path: "inventory/hosts.yml", Kind: store.InventoryStatic,
+	}); err != nil {
+		t.Fatalf("CreateInventory: %v", err)
+	}
+	if _, err := st.CreateInventory(ctx, store.Inventory{
+		Name: "escape-inv", SourceID: &src.ID, Path: "../outside.yml", Kind: store.InventoryStatic,
+	}); err != nil {
+		t.Fatalf("CreateInventory escape: %v", err)
+	}
+	if _, err := st.CreateInventory(ctx, store.Inventory{
+		Name: "abs-escape-inv", SourceID: &src.ID, Path: "/etc/hosts", Kind: store.InventoryStatic,
+	}); err != nil {
+		t.Fatalf("CreateInventory abs escape: %v", err)
+	}
+	if _, err := st.CreateInventory(ctx, store.Inventory{
+		Name: "stale-inv", SourceID: &src.ID, Path: "inventory/missing.yml", Kind: store.InventoryStatic,
+	}); err != nil {
+		t.Fatalf("CreateInventory stale: %v", err)
+	}
+	matPath := filepath.Join(t.TempDir(), "edge.json")
+	if err := os.WriteFile(matPath, []byte(`{"all":{"hosts":{"e1":{}}}}`), 0o600); err != nil {
+		t.Fatalf("write mat: %v", err)
+	}
+	if _, err := st.MaterializeInventory(ctx, "tf:edge", matPath); err != nil {
+		t.Fatalf("MaterializeInventory: %v", err)
+	}
+
+	svc := service.New(st, dataDir, nil)
+	standing, resolved, sourceLinked, err := svc.ResolveStandingInventory(ctx, "proj-inv")
+	if err != nil {
+		t.Fatalf("ResolveStandingInventory: %v", err)
+	}
+	if !sourceLinked || resolved != invPath {
+		t.Fatalf("got (%q, %v), want (%q, true)", resolved, sourceLinked, invPath)
+	}
+	if !bytes.Contains(standing.Body, []byte("node1")) {
+		t.Fatalf("body missing node1: %s", standing.Body)
+	}
+
+	if _, _, _, err := svc.ResolveStandingInventory(ctx, "escape-inv"); !errors.Is(err, service.ErrSourcePathEscape) {
+		t.Fatalf("escape-inv err = %v, want ErrSourcePathEscape", err)
+	}
+	if _, _, _, err := svc.ResolveStandingInventory(ctx, "abs-escape-inv"); !errors.Is(err, service.ErrSourcePathEscape) {
+		t.Fatalf("abs-escape-inv err = %v, want ErrSourcePathEscape", err)
+	}
+	if _, _, _, err := svc.ResolveStandingInventory(ctx, "stale-inv"); !errors.Is(err, store.ErrInventoryStale) {
+		t.Fatalf("stale-inv err = %v, want ErrInventoryStale", err)
+	}
+
+	_, matResolved, matLinked, err := svc.ResolveStandingInventory(ctx, "tf:edge")
+	if err != nil {
+		t.Fatalf("ResolveStandingInventory materialized: %v", err)
+	}
+	if matLinked || matResolved != matPath {
+		t.Fatalf("materialized got (%q, %v), want (%q, false)", matResolved, matLinked, matPath)
 	}
 }

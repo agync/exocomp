@@ -241,3 +241,128 @@ func TestSpecsMatchesFireBuildForASourcedPlay(t *testing.T) {
 		t.Fatalf("run-now spec = %+v, %v; want a run-now trigger that still names infra", manual, err)
 	}
 }
+
+// A play schedule targeting a source-linked YAML static inventory must resolve
+// that inventory against its checkout and pass --inventory in tree rather than
+// failing on process CWD or detaching from group_vars/host_vars.
+func TestPlayScheduleWithSourceLinkedStaticInventoryUsesTreeInventory(t *testing.T) {
+	ctx := t.Context()
+	st := newTestStore(t)
+	checkout := t.TempDir()
+	for _, dir := range []string{"plays", "inventory"} {
+		if err := os.MkdirAll(filepath.Join(checkout, dir), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	invPath := filepath.Join(checkout, "inventory", "hosts.yml")
+	if err := os.WriteFile(invPath, []byte("all:\n  hosts:\n    nas:\n      ansible_host: 10.0.0.2\n"), 0o600); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(checkout, "plays", "backup.yml"), []byte("- hosts: nas\n"), 0o600); err != nil {
+		t.Fatalf("write playbook: %v", err)
+	}
+	src, err := st.CreateSource(ctx, store.Source{Name: "infra", Kind: store.SourcePath, URI: checkout, Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+	if _, err := st.CreateInventory(ctx, store.Inventory{
+		Name: "infra-inv", SourceID: &src.ID, Path: "inventory/hosts.yml", Kind: store.InventoryStatic,
+	}); err != nil {
+		t.Fatalf("CreateInventory: %v", err)
+	}
+	sc, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name:     "backup",
+		CronExpr: "@every 1h",
+		Kind:     KindPlay,
+		Args:     store.ScheduleArgs{Target: "infra-inv", Source: "infra", Argv: []string{"plays/backup.yml", "--check"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+
+	svc := service.New(st, t.TempDir(), nil)
+	s := New(st, &fakeEnqueuer{store: st}, testLogger(),
+		WithSourceResolver(svc.ResolvePlainSourcePlay),
+		WithInventoryResolver(svc.ResolveStandingInventory),
+	)
+	specs, err := s.buildSpecs(ctx, sc)
+	if err != nil {
+		t.Fatalf("buildSpecs: %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("specs = %d, want 1", len(specs))
+	}
+	want := []string{
+		executor.AnsibleBinary,
+		"--inventory", invPath,
+		"--check",
+		filepath.Join(checkout, "plays", "backup.yml"),
+	}
+	if !reflect.DeepEqual(specs[0].Argv, want) {
+		t.Fatalf("argv = %v, want %v", specs[0].Argv, want)
+	}
+
+	// Materialized tofu inventories keep the isolated Artifact path without --inventory in argv.
+	materializedInventory(t, st, "edge", edgeInventory)
+	matSched := sourcedPlaySchedule(t, st, "mat", "infra", "plays/backup.yml")
+	matSpecs, err := s.buildSpecs(ctx, matSched)
+	if err != nil {
+		t.Fatalf("buildSpecs materialized: %v", err)
+	}
+	if strings.Contains(strings.Join(matSpecs[0].Argv, " "), "--inventory") {
+		t.Fatalf("materialized argv unexpectedly carries --inventory: %v", matSpecs[0].Argv)
+	}
+
+	// Empty YAML inventory still fails closed.
+	emptyPath := filepath.Join(checkout, "inventory", "empty.yml")
+	if err := os.WriteFile(emptyPath, []byte("all:\n  vars:\n    x: 1\n"), 0o600); err != nil {
+		t.Fatalf("write empty inventory: %v", err)
+	}
+	if _, err := st.CreateInventory(ctx, store.Inventory{
+		Name: "empty-inv", SourceID: &src.ID, Path: "inventory/empty.yml", Kind: store.InventoryStatic,
+	}); err != nil {
+		t.Fatalf("CreateInventory empty: %v", err)
+	}
+	emptySched, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name:     "empty-sched",
+		CronExpr: "@every 1h",
+		Kind:     KindPlay,
+		Args:     store.ScheduleArgs{Target: "empty-inv", Source: "infra", Argv: []string{"plays/backup.yml"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateSchedule empty: %v", err)
+	}
+	if _, err := s.buildSpecs(ctx, emptySched); err == nil {
+		t.Fatal("buildSpecs accepted an empty YAML standing inventory")
+	}
+}
+
+// A source-linked inventory without an InventoryResolver fails closed instead
+// of falling back to process CWD.
+func TestPlayScheduleSourceLinkedInventoryFailsWithoutResolver(t *testing.T) {
+	ctx := t.Context()
+	st := newTestStore(t)
+	checkout := t.TempDir()
+	src, err := st.CreateSource(ctx, store.Source{Name: "infra", Kind: store.SourcePath, URI: checkout, Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+	if _, err := st.CreateInventory(ctx, store.Inventory{
+		Name: "infra-inv", SourceID: &src.ID, Path: "inventory/hosts.yml", Kind: store.InventoryStatic,
+	}); err != nil {
+		t.Fatalf("CreateInventory: %v", err)
+	}
+	sc, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name:     "backup",
+		CronExpr: "@every 1h",
+		Kind:     KindPlay,
+		Args:     store.ScheduleArgs{Target: "infra-inv", Argv: []string{"plays/backup.yml"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+	s := New(st, &fakeEnqueuer{store: st}, testLogger())
+	if _, err := s.buildSpecs(ctx, sc); err == nil {
+		t.Fatal("buildSpecs succeeded for source-linked inventory without an InventoryResolver")
+	}
+}

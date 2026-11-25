@@ -15,6 +15,7 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/verify"
@@ -438,25 +439,45 @@ func recordInventoryArtifact(ctx context.Context, st *store.Store, jobID int64, 
 	return err
 }
 
-// staticInventoryPath returns the file a registered static inventory names, for
-// the consumer to copy into its private dir. It returns "" for an empty name, a
-// name that is not registered, or a dynamic inventory (whose target is a plugin
-// config, not a file to copy).
-func staticInventoryPath(ctx context.Context, st *store.Store, name string) (string, error) {
-	if name == "" {
-		return "", nil
+// resolveRunInventory resolves a registered static inventory for a job whose
+// argv omits --inventory. Tofu-materialized artifacts (`SourceID == nil`) stay on
+// the isolated InventoryArtifact private copy path, while source-linked static
+// inventories (`SourceID != nil`) resolve inside their source checkout and inject
+// `--inventory <resolved>` into argv so sibling group_vars/host_vars load and
+// the sandbox grants the inventory tree.
+func resolveRunInventory(ctx context.Context, st *store.Store, dataDir string, argv []string, name string) ([]string, string, error) {
+	if hasInventoryFlag(argv) || name == "" {
+		return argv, "", nil
 	}
 	inv, err := st.InventoryByName(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
-		return "", nil
+		return argv, "", nil
 	}
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	if inv.Kind != store.InventoryStatic || inv.Path == "" {
-		return "", nil
+		return argv, "", nil
 	}
-	return inv.Path, nil
+	if inv.SourceID != nil {
+		_, resolved, _, err := service.New(st, dataDir, nil).ResolveStandingInventory(ctx, name)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(argv) == 0 {
+			return argv, "", nil
+		}
+		insertAt := 1
+		if filepath.Base(argv[0]) == executor.AnsibleAdhocBinary && len(argv) >= 2 {
+			insertAt = 2
+		}
+		out := make([]string, 0, len(argv)+2)
+		out = append(out, argv[:insertAt]...)
+		out = append(out, "--inventory", resolved)
+		out = append(out, argv[insertAt:]...)
+		return out, "", nil
+	}
+	return argv, inv.Path, nil
 }
 
 // hasInventoryFlag reports whether an ansible argv already names an inventory,

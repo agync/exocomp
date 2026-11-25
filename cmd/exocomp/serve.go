@@ -509,7 +509,11 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	go func() { qDone <- q.Run(jobCtx) }()
 	_, _ = fmt.Fprintf(out, "queue draining with %d workers\n", serveWorkers)
 
-	s := sched.New(st, q, nil, sched.WithSourceResolver(service.New(st, dir, nil).ResolvePlainSourcePlay))
+	svc := service.New(st, dir, nil)
+	s := sched.New(st, q, nil,
+		sched.WithSourceResolver(svc.ResolvePlainSourcePlay),
+		sched.WithInventoryResolver(svc.ResolveStandingInventory),
+	)
 	if err := s.Start(jobCtx); err != nil {
 		cancelJobs()
 		if qErr := <-qDone; qErr != nil {

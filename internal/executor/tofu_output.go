@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // TofuInventoryEventKey namespaces the inventory-capture summary inside an
@@ -72,32 +75,27 @@ type InventoryHost struct {
 	Local bool
 }
 
-// inventoryGroup is one group of an Ansible JSON inventory. Only the two keys
-// that hold hosts are read; group vars are the play's business.
-type inventoryGroup struct {
-	Hosts    map[string]map[string]json.RawMessage `json:"hosts"`
-	Children map[string]json.RawMessage            `json:"children"`
-}
-
-// InventoryHosts reads the hosts a materialized inventory names, walking every
-// top-level group and its children. It exists so the chain that follows an
-// apply — wait for SSH, scan the host key, onboard, converge — derives its
-// targets from the same bytes the play will read, rather than from the state or
-// from a second `tofu output`.
+// InventoryHosts reads the hosts a static JSON or Ansible YAML inventory names,
+// walking every top-level group and its children. It exists so the chain that
+// follows an apply — wait for SSH, scan the host key, onboard, converge — and
+// scheduled source plays derive targets from the same bytes Ansible will read.
 //
-// The var form the capture falls back to (no ansible_inventory output) names no
-// hosts, so it returns an empty slice: a caller that must not run a play
-// against nothing has its fail-closed signal here.
+// An empty-hosts mapping (such as a `vars`-only fallback group) returns an
+// empty slice cleanly: callers fail closed against empty host sets.
 func InventoryHosts(body []byte) ([]InventoryHost, error) {
-	var groups map[string]json.RawMessage
-	if err := json.Unmarshal(body, &groups); err != nil {
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, fmt.Errorf("executor: parse inventory: empty inventory")
+	}
+	var groups map[string]any
+	if err := yaml.Unmarshal(body, &groups); err != nil {
 		return nil, fmt.Errorf("executor: parse inventory: %w", err)
+	}
+	if groups == nil {
+		return nil, fmt.Errorf("executor: parse inventory: expected group mapping")
 	}
 	seen := map[string]InventoryHost{}
 	for _, raw := range groups {
-		if err := walkInventoryGroup(raw, seen); err != nil {
-			return nil, err
-		}
+		walkInventoryGroup(raw, seen)
 	}
 	out := make([]InventoryHost, 0, len(seen))
 	for _, h := range seen {
@@ -108,52 +106,66 @@ func InventoryHosts(body []byte) ([]InventoryHost, error) {
 }
 
 // walkInventoryGroup collects one group's hosts and recurses into its children.
-// A group that is not an object (a stray var, a null) contributes nothing
-// rather than failing the walk: the inventory is operator-shaped Terraform
-// output, and one odd key must not cost the whole host list.
-func walkInventoryGroup(raw json.RawMessage, seen map[string]InventoryHost) error {
-	var g inventoryGroup
-	if err := json.Unmarshal(raw, &g); err != nil {
-		return nil
+// Non-mapping keys (vars, scalars, nulls) contribute nothing rather than failing
+// the walk so extra group-level metadata never breaks host extraction.
+func walkInventoryGroup(raw any, seen map[string]InventoryHost) {
+	group, ok := raw.(map[string]any)
+	if !ok {
+		return
 	}
-	for name, vars := range g.Hosts {
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = inventoryHost(name, vars)
-	}
-	for _, child := range g.Children {
-		if err := walkInventoryGroup(child, seen); err != nil {
-			return err
+	if hosts, ok := group["hosts"].(map[string]any); ok {
+		for name, rawVars := range hosts {
+			if _, exists := seen[name]; exists {
+				continue
+			}
+			vars, _ := rawVars.(map[string]any)
+			seen[name] = inventoryHost(name, vars)
 		}
 	}
-	return nil
+	if children, ok := group["children"].(map[string]any); ok {
+		for _, child := range children {
+			walkInventoryGroup(child, seen)
+		}
+	}
 }
 
 // inventoryHost resolves one host's connection facts from its host vars.
-func inventoryHost(name string, vars map[string]json.RawMessage) InventoryHost {
+func inventoryHost(name string, vars map[string]any) InventoryHost {
 	h := InventoryHost{Name: name, Address: name, Port: SSHPort}
-	if v, ok := inventoryString(vars["ansible_host"]); ok && v != "" {
+	if v, ok := vars["ansible_host"].(string); ok && v != "" {
 		h.Address = v
 	}
-	if raw, ok := vars["ansible_port"]; ok {
-		if n, err := strconv.Atoi(strings.Trim(string(raw), `"`)); err == nil && n > 0 {
-			h.Port = n
-		}
+	if port, ok := inventoryPort(vars["ansible_port"]); ok {
+		h.Port = port
 	}
-	if v, ok := inventoryString(vars["ansible_connection"]); ok && v == "local" {
+	if v, ok := vars["ansible_connection"].(string); ok && v == "local" {
 		h.Local = true
 	}
 	return h
 }
 
-// inventoryString reads a JSON string var, reporting whether it was one.
-func inventoryString(raw json.RawMessage) (string, bool) {
-	var s string
-	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
-		return "", false
+// inventoryPort extracts a valid TCP port (1..65535) from YAML/JSON int, float, or string vars.
+func inventoryPort(raw any) (int, bool) {
+	const maxTCPPort = 65535
+	switch v := raw.(type) {
+	case int:
+		return v, v > 0 && v <= maxTCPPort
+	case int64:
+		return int(v), v > 0 && v <= maxTCPPort
+	case uint64:
+		return int(v), v > 0 && v <= maxTCPPort
+	case float64:
+		if v <= 0 || v > maxTCPPort {
+			return 0, false
+		}
+		n := int(v)
+		return n, v == float64(n)
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		return n, err == nil && n > 0 && n <= maxTCPPort
+	default:
+		return 0, false
 	}
-	return s, true
 }
 
 // OutputSealer seals one sensitive tofu output and binds it as a named-env run

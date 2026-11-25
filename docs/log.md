@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-11-25
+
+- **Scheduled plays resolve source-linked standing inventories in-tree.**
+  [Decision 0025](decisions/0025-scheduled-play-source.md) and
+  [Sources](operations/sources.md#scheduled-plays-from-a-source) now distinguish
+  tofu-materialized standing inventories (isolated private copy) from
+  source-linked static inventories (`service.ResolveStandingInventory`),
+  parsing both JSON and Ansible YAML host maps in `executor.InventoryHosts`
+  and keeping `group_vars` and `host_vars` reachable via in-tree `--inventory`.
+
 ## 2026-11-23
 
 - **The compose passphrase docs state the actual boundary.** [Containers](operations/containers.md#compose-first-run)

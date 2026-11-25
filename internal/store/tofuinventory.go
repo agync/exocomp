@@ -74,13 +74,19 @@ func (s *Store) StandingInventory(ctx context.Context, name string) (StandingInv
 	if inv.Kind != InventoryStatic || inv.Path == "" {
 		return StandingInventory{}, fmt.Errorf("%w: %s", ErrInventoryNotMaterialized, name)
 	}
-	info, err := os.Stat(inv.Path)
+	return StandingInventoryAt(inv, inv.Path)
+}
+
+// StandingInventoryAt reads a static inventory from resolved disk path path and
+// fails closed with ErrInventoryStale if the file cannot be stat'd or read.
+func StandingInventoryAt(inv Inventory, path string) (StandingInventory, error) {
+	info, err := os.Stat(path)
 	if err != nil {
-		return StandingInventory{}, fmt.Errorf("%w: %s: %w", ErrInventoryStale, name, err)
+		return StandingInventory{}, fmt.Errorf("%w: %s: %w", ErrInventoryStale, inv.Name, err)
 	}
-	body, err := os.ReadFile(inv.Path)
+	body, err := os.ReadFile(path)
 	if err != nil {
-		return StandingInventory{}, fmt.Errorf("%w: %s: %w", ErrInventoryStale, name, err)
+		return StandingInventory{}, fmt.Errorf("%w: %s: %w", ErrInventoryStale, inv.Name, err)
 	}
 	return StandingInventory{
 		Inventory:   inv,
