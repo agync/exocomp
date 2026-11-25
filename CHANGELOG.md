@@ -14,6 +14,13 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.6.1](https://github.com/agync/exocomp/compare/v0.6.0...v0.6.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **sched:** resolve source standing inventories ([f268f4d](https://github.com/agync/exocomp/commit/f268f4df4fc8dd2d3e1a72562dc3efcb6125a69b))
+
 ## [0.6.0](https://github.com/agync/exocomp/compare/v0.5.0...v0.6.0) (2026-11-09)
 
 
