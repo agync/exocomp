@@ -37,14 +37,40 @@ func (s *Service) ResolveInventory(ctx context.Context, value string) (path, nam
 	return abs, "", nil
 }
 
+// ResolveStandingInventory resolves a registered static standing inventory by
+// name, reads its bytes from disk, and reports whether it lives inside a
+// registered source checkout rather than being a tofu-materialized artifact.
+func (s *Service) ResolveStandingInventory(ctx context.Context, name string) (store.StandingInventory, string, bool, error) {
+	inv, err := s.store.InventoryByName(ctx, name)
+	if err != nil {
+		return store.StandingInventory{}, "", false, err
+	}
+	if inv.Kind != store.InventoryStatic || inv.Path == "" {
+		return store.StandingInventory{}, "", false, fmt.Errorf("%w: %s", store.ErrInventoryNotMaterialized, name)
+	}
+	resolved, err := s.resolveInventoryPath(ctx, inv)
+	if err != nil {
+		return store.StandingInventory{}, "", false, err
+	}
+	standing, err := store.StandingInventoryAt(inv, resolved)
+	if err != nil {
+		return store.StandingInventory{}, "", false, err
+	}
+	return standing, resolved, inv.SourceID != nil, nil
+}
+
 // resolveInventoryPath turns a registered inventory's stored path into the path
 // ansible targets. A source-linked inventory records its path relative to that
-// source's checkout, so it must resolve against the source's materialized root —
-// the same directory the play runs from — not the process CWD. An absolute path,
-// or an inventory with no source, is returned as stored.
+// source's checkout, so it must be relative and resolve inside the source's
+// materialized root — the same directory the play runs from — not the process
+// CWD. An inventory with no source keeps its stored path as-is.
 func (s *Service) resolveInventoryPath(ctx context.Context, inv store.Inventory) (string, error) {
-	if inv.Path == "" || filepath.IsAbs(inv.Path) || inv.SourceID == nil {
+	if inv.Path == "" || inv.SourceID == nil {
 		return inv.Path, nil
+	}
+	if filepath.IsAbs(inv.Path) {
+		return "", fmt.Errorf("inventory %q: path %q must be relative to the checkout: %w",
+			inv.Name, inv.Path, ErrSourcePathEscape)
 	}
 	src, err := s.store.GetSource(ctx, *inv.SourceID)
 	if err != nil {
@@ -54,5 +80,9 @@ func (s *Service) resolveInventoryPath(ctx context.Context, inv store.Inventory)
 	if err != nil {
 		return "", fmt.Errorf("inventory %q: %w", inv.Name, err)
 	}
-	return filepath.Join(loc.Root, inv.Path), nil
+	confined, err := containedPathKind(loc.Root, "inventory", inv.Path)
+	if err != nil {
+		return "", fmt.Errorf("inventory %q: %w", inv.Name, err)
+	}
+	return confined, nil
 }

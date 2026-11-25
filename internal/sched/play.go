@@ -31,23 +31,30 @@ const KindPlay = "play"
 // then fails closed.
 type SourceResolver func(ctx context.Context, source, playbook string) (abs, dir string, readOnly bool, err error)
 
-// playSpec builds the one job a play schedule fires. The play carries no
-// --inventory of its own: Spec.Inventory names the registered one, and the
-// daemon's ansible driver copies that file into the run's own 0700 private
-// dir, so a scheduled converge reaches the tofu-derived hosts under the same
-// boundary the handoff's play does.
+// InventoryResolver resolves a standing inventory by name to its bytes on disk,
+// resolved filesystem path, and whether it lives inside a source checkout
+// rather than being a tofu-materialized artifact.
+type InventoryResolver func(ctx context.Context, name string) (standing store.StandingInventory, resolvedPath string, sourceLinked bool, err error)
+
+// playSpec builds the one job a play schedule fires. For tofu-materialized
+// inventories (`sourceLinked == false`), the play carries no --inventory of its
+// own and the daemon's ansible driver copies that file into the run's private
+// dir. For source-linked static inventories (`sourceLinked == true`), the play
+// passes `--inventory <resolvedPath>` directly so Ansible reads sibling
+// `group_vars/` and `host_vars/` inside the source tree.
 //
 // It fails closed. A schedule whose inventory is unregistered, not a
-// materialized file, gone from disk, or names no hosts enqueues NOTHING and
-// reports why: a recurring converge that quietly runs against an empty
-// inventory looks green forever while converging nobody.
+// materialized/static file, gone from disk, unresolvable for its source, or
+// names no hosts enqueues NOTHING and reports why: a recurring converge that
+// quietly runs against an empty inventory looks green forever while converging
+// nobody.
 //
 // A schedule that names a source runs from that source's checkout and carries
 // the name on the spec, so queue admission folds in the source's default egress
 // and run-secret binding (Decisions 0023, 0025). A schedule with no source is
 // unchanged: the playbook is used as given and the spec names none.
 func playSpec(ctx context.Context, st *store.Store, log *slog.Logger, sc store.Schedule, trigger string,
-	resolve SourceResolver) (queue.Spec, error) {
+	resolve SourceResolver, resolveInv InventoryResolver) (queue.Spec, error) {
 	inventory := sc.Args.Target
 	if inventory == "" {
 		return queue.Spec{}, fmt.Errorf("schedule %q: kind %s needs an inventory", sc.Name, KindPlay)
@@ -55,7 +62,7 @@ func playSpec(ctx context.Context, st *store.Store, log *slog.Logger, sc store.S
 	if len(sc.Args.Argv) == 0 {
 		return queue.Spec{}, fmt.Errorf("schedule %q: kind %s needs a playbook", sc.Name, KindPlay)
 	}
-	hosts, err := inventoryHosts(ctx, st, inventory)
+	hosts, resolvedInv, sourceLinked, err := standingInventoryHosts(ctx, st, inventory, resolveInv)
 	if err != nil {
 		return queue.Spec{}, fmt.Errorf("schedule %q: %w", sc.Name, err)
 	}
@@ -79,7 +86,11 @@ func playSpec(ctx context.Context, st *store.Store, log *slog.Logger, sc store.S
 		}
 		playbook, spec.Dir, spec.DirReadOnly, spec.Source = abs, dir, readOnly, name
 	}
-	spec.Argv = executor.AnsibleArtifactArgv(playbook, sc.Args.Argv[1:]...)
+	if sourceLinked {
+		spec.Argv = executor.AnsibleArgv(playbook, resolvedInv, sc.Args.Argv[1:]...)
+	} else {
+		spec.Argv = executor.AnsibleArtifactArgv(playbook, sc.Args.Argv[1:]...)
+	}
 
 	attrs := []any{"schedule", sc.Name, "inventory", inventory, "hosts", hosts}
 	if spec.Source != "" {
@@ -89,24 +100,38 @@ func playSpec(ctx context.Context, st *store.Store, log *slog.Logger, sc store.S
 	return spec, nil
 }
 
-// inventoryHosts returns how many hosts a standing inventory currently names,
-// erroring when it names none. The count is read from the same bytes the run
-// will consume, so what gates the fire is what the play would have targeted.
-func inventoryHosts(ctx context.Context, st *store.Store, name string) (int, error) {
-	standing, err := st.StandingInventory(ctx, name)
+// standingInventoryHosts returns how many hosts a standing inventory currently
+// names, its resolved path, and whether it is source-linked, failing closed on
+// missing/stale/hostless inventories or missing source resolvers.
+func standingInventoryHosts(ctx context.Context, st *store.Store, name string,
+	resolveInv InventoryResolver) (hosts int, resolvedPath string, sourceLinked bool, err error) {
+	var standing store.StandingInventory
+	if resolveInv != nil {
+		standing, resolvedPath, sourceLinked, err = resolveInv(ctx, name)
+	} else {
+		var inv store.Inventory
+		inv, err = st.InventoryByName(ctx, name)
+		if err == nil && inv.SourceID != nil {
+			return 0, "", false, fmt.Errorf("inventory %q belongs to a source that cannot be resolved here", name)
+		}
+		if err == nil {
+			standing, err = st.StandingInventory(ctx, name)
+			resolvedPath = standing.Inventory.Path
+		}
+	}
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return 0, fmt.Errorf("inventory %q is not registered", name)
+		return 0, "", false, fmt.Errorf("inventory %q is not registered", name)
 	case err != nil:
-		return 0, err
+		return 0, "", false, err
 	}
-	hosts, err := executor.InventoryHosts(standing.Body)
+	parsed, err := executor.InventoryHosts(standing.Body)
 	if err != nil {
-		return 0, fmt.Errorf("inventory %q: %w", name, err)
+		return 0, "", false, fmt.Errorf("inventory %q: %w", name, err)
 	}
-	if len(hosts) == 0 {
-		return 0, fmt.Errorf("inventory %q names no hosts (refreshed %s); not running a play against nothing",
+	if len(parsed) == 0 {
+		return 0, "", false, fmt.Errorf("inventory %q names no hosts (refreshed %s); not running a play against nothing",
 			name, standing.RefreshedAt.Format("2006-01-02 15:04:05Z"))
 	}
-	return len(hosts), nil
+	return len(parsed), resolvedPath, sourceLinked, nil
 }

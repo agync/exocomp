@@ -66,3 +66,94 @@ func TestInventoryHostsRejectsNonInventory(t *testing.T) {
 		t.Fatal("InventoryHosts accepted a non-inventory body")
 	}
 }
+
+// TestInventoryHostsParsesAnsibleYAML proves Ansible YAML standing inventories
+// parse identically to materialized JSON inventories so play schedules work
+// against both formats.
+func TestInventoryHostsParsesAnsibleYAML(t *testing.T) {
+	body := []byte(`---
+all:
+  children:
+    nodes:
+      hosts:
+        alpha:
+          ansible_host: 10.0.0.10
+          ansible_port: 2222
+        beta:
+    nested:
+      children:
+        local_grp:
+          hosts:
+            ctl:
+              ansible_connection: local
+`)
+	hosts, err := executor.InventoryHosts(body)
+	if err != nil {
+		t.Fatalf("InventoryHosts YAML: %v", err)
+	}
+	got := map[string]executor.InventoryHost{}
+	for _, h := range hosts {
+		got[h.Name] = h
+	}
+	if len(got) != 3 {
+		t.Fatalf("hosts = %v, want 3", hosts)
+	}
+	if h := got["alpha"]; h.Address != "10.0.0.10" || h.Port != 2222 || h.Local {
+		t.Errorf("alpha = %+v, want 10.0.0.10:2222 remote", h)
+	}
+	if h := got["beta"]; h.Address != "beta" || h.Port != executor.SSHPort {
+		t.Errorf("beta = %+v, want beta:%d", h, executor.SSHPort)
+	}
+	if h := got["ctl"]; !h.Local {
+		t.Errorf("ctl = %+v, want Local", h)
+	}
+}
+
+func TestInventoryHostsYAMLVarOnlyNamesNoHosts(t *testing.T) {
+	body := []byte("all:\n  vars:\n    region: eu\n")
+	hosts, err := executor.InventoryHosts(body)
+	if err != nil {
+		t.Fatalf("InventoryHosts YAML: %v", err)
+	}
+	if len(hosts) != 0 {
+		t.Fatalf("hosts = %v, want none", hosts)
+	}
+}
+
+func TestInventoryHostsEdgeCases(t *testing.T) {
+	body := []byte(`
+# Commented YAML inventory
+all:
+  hosts:
+    strport:
+      ansible_host: 10.0.0.20
+      ansible_port: "2222"
+    overflow:
+      ansible_port: 18446744073709551615
+`)
+	hosts, err := executor.InventoryHosts(body)
+	if err != nil {
+		t.Fatalf("InventoryHosts commented YAML: %v", err)
+	}
+	got := map[string]executor.InventoryHost{}
+	for _, h := range hosts {
+		got[h.Name] = h
+	}
+	if got["strport"].Port != 2222 {
+		t.Errorf("strport = %+v, want port 2222", got["strport"])
+	}
+	if got["overflow"].Port != executor.SSHPort {
+		t.Errorf("overflow = %+v, want fallback %d", got["overflow"], executor.SSHPort)
+	}
+
+	for _, bad := range [][]byte{
+		[]byte(""),
+		[]byte("null"),
+		[]byte("123"),
+		[]byte("- item1\n- item2\n"),
+	} {
+		if _, err := executor.InventoryHosts(bad); err == nil {
+			t.Errorf("InventoryHosts accepted non-mapping %q", bad)
+		}
+	}
+}

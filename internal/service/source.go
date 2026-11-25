@@ -122,6 +122,10 @@ func ValidSourceName(name string) error {
 // escape too. The path itself need not exist yet; the deepest existing ancestor
 // is what gets resolved.
 func containedPath(root, rel string) (string, error) {
+	return containedPathKind(root, "playbook", rel)
+}
+
+func containedPathKind(root, kind, rel string) (string, error) {
 	realRoot, err := resolveExisting(root)
 	if err != nil {
 		return "", err
@@ -133,7 +137,7 @@ func containedPath(root, rel string) (string, error) {
 	}
 	within, err := filepath.Rel(realRoot, target)
 	if err != nil || within == ".." || strings.HasPrefix(within, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("playbook %q: %w", rel, ErrSourcePathEscape)
+		return "", fmt.Errorf("%s %q: %w", kind, rel, ErrSourcePathEscape)
 	}
 	return joined, nil
 }

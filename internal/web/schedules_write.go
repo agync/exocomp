@@ -251,7 +251,9 @@ func (s *Server) handleScheduleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	specs, err := sched.Specs(r.Context(), s.store, s.log, sc, "operator", s.service().ResolvePlainSourcePlay)
+	svc := s.service()
+	specs, err := sched.Specs(r.Context(), s.store, s.log, sc, "operator",
+		svc.ResolvePlainSourcePlay, sched.WithInventoryResolver(svc.ResolveStandingInventory))
 	if err != nil {
 		s.log.Error("web: schedule run specs failed", "schedule", name, "err", err.Error(), "by", ident.token.Name)
 		s.scheduleRowRefusal(w, r, name, "Could not run schedule: "+err.Error())

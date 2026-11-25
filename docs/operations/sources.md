@@ -127,14 +127,16 @@ The source must resolve when the schedule is added: it must exist and carry no h
 the playbook is relative to its checkout and may not leave it, so an absolute path is refused. Each fire runs the play from that checkout, with
 its `ansible.cfg` loaded and its read-only posture, and the job names the source, so queue
 admission unions the source's default egress and fills its default run-secrets binding like
-any run that names it. The standing inventory `--target` names is unchanged and keeps its
-fail-closed rules. `--source` is refused on any other kind.
+any run that names it. The standing inventory `--target` names keeps its fail-closed rules:
+a source-less static inventory (`SourceID == nil`) uses an isolated private copy, whereas a
+source-linked static inventory (`SourceID != nil`, JSON or Ansible YAML) resolves relative to its
+source checkout. `--source` is refused on any other kind.
 
-Because that inventory is passed as `--inventory`, it overrides the checkout's `ansible.cfg`
-inventory: vars beside the playbook and in its roles load, but `group_vars` and `host_vars`
-beside the checkout's own inventory do not, so a tree that keeps its encrypted vars there still
-belongs in a playbook rule. A schedule has no `--vault-project`; the credential is the source's
-default binding.
+For source-less static inventories, `--inventory` points at the isolated private copy (`group_vars`
+and `host_vars` beside a source tree's own inventory do not load). For source-linked static
+inventories, passing `--inventory <resolvedPath>` directly in-tree keeps sibling `group_vars` and
+`host_vars` reachable alongside the checkout's read-only grant. A schedule has no `--vault-project`;
+the credential is the source's default binding.
 
 A source that gains lifecycle hooks or a gate after the schedule was added is refused at fire
 time, as for a playbook rule. A source that cannot be resolved then, including one removed

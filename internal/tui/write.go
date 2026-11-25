@@ -458,8 +458,9 @@ func planNowCmd(st *store.Store, w *Write, ws store.Workspace) tea.Cmd {
 func runScheduleNowCmd(st *store.Store, w *Write, sc store.Schedule) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		resolve := service.New(st, w.DataDir, nil).ResolvePlainSourcePlay
-		specs, err := sched.Specs(ctx, st, nil, sc, service.TriggerTUI, resolve)
+		svc := service.New(st, w.DataDir, nil)
+		specs, err := sched.Specs(ctx, st, nil, sc, service.TriggerTUI,
+			svc.ResolvePlainSourcePlay, sched.WithInventoryResolver(svc.ResolveStandingInventory))
 		if err != nil {
 			return writeDoneMsg{screen: screenSchedules, text: "schedule: " + err.Error()}
 		}

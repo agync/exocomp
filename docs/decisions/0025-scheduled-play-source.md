@@ -42,9 +42,13 @@ the way a playbook rule does.**
   posture, and the spec names the source. `ApplySourceDefaults` then unions the
   source's default egress and fills its default run-secret binding, as for any run
   that names it.
-- The inventory is the standing one, not the checkout's own. `--target` still names a registered
-  inventory, the argv still carries no `--inventory`, and the fail-closed rules
-  (missing, stale or hostless inventory fires nothing) still hold.
+- When the standing target is a source-less static inventory (`SourceID == nil`), the
+  argv omits `--inventory` and the driver copies its registered file into the run's own
+  private dir under the fail-closed rules above. When the standing target is a
+  source-linked static inventory (`SourceID != nil`, JSON or Ansible YAML), it resolves
+  inside its registered source checkout via `service.ResolveStandingInventory` and passes
+  `--inventory <resolvedPath>` directly in-tree so sibling `group_vars` and `host_vars`
+  load and nono grants read access to the inventory directory.
 - A source with hooks or a gate is refused, as for a rule: an unattended play never
   composes the lifecycle workflow `exocomp run` owns. A source that cannot be
   resolved at fire time, including one deleted since the schedule was added, enqueues
@@ -65,11 +69,11 @@ working directory, no source, no defaults.
 - No referential check ties a schedule to its source. `source rm` does not look at
   schedules, as it does not look at rules; the next fire fails closed and the log names
   the missing source.
-- Because the inventory is the registered standing one, the driver passes it as
-  `--inventory`, which overrides the checkout's `ansible.cfg`. Vars beside the
-  playbook and in the tree's roles load; `group_vars` and `host_vars` that sit beside
-  the checkout's own inventory do not. A tree whose vault-encrypted vars live there is
-  not served by a scheduled play and stays a playbook rule. A schedule also has no
+- For source-less static inventories, `--inventory` overrides the checkout's `ansible.cfg`
+  with the isolated private copy (`group_vars` and `host_vars` in a source checkout do not
+  sit beside that artifact). For source-linked static inventories, resolving the inventory
+  inside its checkout and passing `--inventory <resolvedPath>` keeps sibling `group_vars`
+  and `host_vars` reachable under the checkout's read-only grant. A schedule still has no
   `--vault-project`: the credential is the source's default binding.
 - Run-secret layering is unchanged: tofu auto-outputs, then the binding, then the
   inventory's env binding, later layers winning

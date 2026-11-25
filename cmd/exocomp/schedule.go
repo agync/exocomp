@@ -59,9 +59,10 @@ func newScheduleAddCmd() *cobra.Command {
 			"playbook is relative to that registered source's checkout, the play runs from " +
 			"it (so its ansible.cfg loads), and every fire inherits the source's default " +
 			"egress ports (`exocomp source egress`) and run-secrets binding " +
-			"(`exocomp source run-secrets`). The inventory is still the standing one --target " +
-			"names, so group_vars beside the checkout's own inventory are not read, and a " +
-			"schedule has no vault project. Without --source a play fire names no " +
+			"(`exocomp source run-secrets`). Source-linked standing inventories (`--target`) resolve " +
+			"inside their checkout so sibling group_vars and host_vars load; tofu-materialized " +
+			"inventories still run via an isolated private copy, and a schedule has no vault " +
+			"project. Without --source a play fire names no " +
 			"source, uses the playbook path as given, and inherits neither. A source with " +
 			"lifecycle hooks is refused, as for a playbook rule.\n\n" +
 			"Kind play with --check is the config-drift schedule: it fires the play in " +

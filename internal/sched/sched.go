@@ -48,10 +48,11 @@ type Enqueuer interface {
 // their cron expression. Every fire goes through Enqueue, the same path a
 // keypress or a webhook rule uses — there is no side door here.
 type Scheduler struct {
-	store   *store.Store
-	queue   Enqueuer
-	log     *slog.Logger
-	resolve SourceResolver
+	store      *store.Store
+	queue      Enqueuer
+	log        *slog.Logger
+	resolve    SourceResolver
+	resolveInv InventoryResolver
 
 	mu      sync.Mutex
 	cron    *cron.Cron
@@ -78,6 +79,13 @@ type Option func(*Scheduler)
 // checkout. Without it such a schedule fails closed at fire time.
 func WithSourceResolver(r SourceResolver) Option {
 	return func(s *Scheduler) { s.resolve = r }
+}
+
+// WithInventoryResolver lets a play schedule targeting a source-linked static
+// inventory resolve it inside its source checkout. Without it, source-linked
+// inventories fail closed at fire time.
+func WithInventoryResolver(r InventoryResolver) Option {
+	return func(s *Scheduler) { s.resolveInv = r }
 }
 
 // New returns a Scheduler over st and q. log defaults to slog.Default().
@@ -456,7 +464,7 @@ func (s *Scheduler) nextFireTime(scheduleID int64) *time.Time {
 // buildSpecs is the scheduler-bound wrapper over Specs: a fire has no separate
 // trigger from the schedule itself, so it passes Trigger.
 func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.Spec, error) {
-	return Specs(ctx, s.store, s.log, sc, Trigger, s.resolve)
+	return Specs(ctx, s.store, s.log, sc, Trigger, s.resolve, WithInventoryResolver(s.resolveInv))
 }
 
 // Specs builds the queue specs one schedule's kind produces, independent of
@@ -466,11 +474,18 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 // idempotency key — that is dispatch's job for a real fire. A backup schedule
 // with an empty target fans out to every enabled target, each getting its own
 // job and its own "backup:<target>" concurrency key. resolve serves a play
-// schedule that names a source (see SourceResolver); other kinds never use it.
+// schedule that names a source (see SourceResolver); opts may supply
+// WithInventoryResolver for source-linked static inventories.
 func Specs(ctx context.Context, st *store.Store, log *slog.Logger, sc store.Schedule, trigger string,
-	resolve SourceResolver) ([]queue.Spec, error) {
+	resolve SourceResolver, opts ...Option) ([]queue.Spec, error) {
 	if log == nil {
 		log = slog.Default()
+	}
+	var cfg Scheduler
+	for _, o := range opts {
+		if o != nil {
+			o(&cfg)
+		}
 	}
 	switch sc.Kind {
 	case store.ScheduleShell:
@@ -501,7 +516,7 @@ func Specs(ctx context.Context, st *store.Store, log *slog.Logger, sc store.Sche
 		return []queue.Spec{reactive.PlanSpec(ws, trigger)}, nil
 
 	case KindPlay:
-		spec, err := playSpec(ctx, st, log, sc, trigger, resolve)
+		spec, err := playSpec(ctx, st, log, sc, trigger, resolve, cfg.resolveInv)
 		if err != nil {
 			return nil, err
 		}

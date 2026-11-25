@@ -542,12 +542,10 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 		return store.Job{}, err
 	}
 
-	inventoryArtifact := ""
-	if !hasInventoryFlag(spec.Argv) {
-		inventoryArtifact, err = staticInventoryPath(ctx, st, spec.Inventory)
-		if err != nil {
-			return store.Job{}, err
-		}
+	var inventoryArtifact string
+	spec.Argv, inventoryArtifact, err = resolveRunInventory(ctx, st, dir, spec.Argv, spec.Inventory)
+	if err != nil {
+		return store.Job{}, err
 	}
 	// Resolve the per-source venv (Decision 0011 vendoring step) before draining the
 	// job inline. Fail-closed: a manifest that will not resolve stops the run.
